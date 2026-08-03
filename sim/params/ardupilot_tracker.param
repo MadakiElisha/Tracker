@@ -1,0 +1,21 @@
+# ArduCopter params optimised for follow-me SITL testing
+
+# --- Guided mode velocity limits ---
+GUID_OPTIONS,0
+LOIT_SPEED,1000        # 10 m/s max loiter speed
+WPNAV_SPEED,500        # 5 m/s cruise
+
+# --- Stabilisation ---
+ATC_ACCEL_Y_MAX,110000
+ATC_ACCEL_P_MAX,110000
+ATC_ACCEL_R_MAX,110000
+
+# --- Disable arming checks for SITL convenience ---
+ARMING_CHECK,0
+
+# --- EKF ---
+EK3_ENABLE,1
+EK2_ENABLE,0
+
+# --- Logging ---
+LOG_BACKEND_TYPE,0

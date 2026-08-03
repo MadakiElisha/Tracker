@@ -1,0 +1,81 @@
+# ============================================================
+# Drone Tracker — .gitignore
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv/
+venv-ardupilot/
+
+# YOLO model weights (large binary files — download separately)
+*.pt
+*.engine
+*.hef
+*.onnx
+*.tflite
+
+# YOLO training runs
+runs/
+
+# MAVProxy logs
+*.tlog
+*.tlog.raw
+mav.parm
+*.parm.bak
+
+# Gazebo logs and cache
+~/.gazebo/
+*.log
+
+# Video test files (keep them local, not in repo)
+*.mp4
+*.avi
+*.mkv
+*.mov
+track_test_clip.*
+
+# ArduPilot build artifacts
+ardupilot/build/
+ardupilot/.waf-*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Python package build
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Environment files (may contain secrets)
+.env
+*.env
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Coverage
+.coverage
+htmlcov/
+
+# Pytest
+.pytest_cache/
+venv/

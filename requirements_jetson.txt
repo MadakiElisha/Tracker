@@ -1,0 +1,31 @@
+# ============================================================
+# Drone Tracker — Python Dependencies
+# Jetson Orin Nano / NX (JetPack 6.x)
+# ============================================================
+# IMPORTANT: Use --system-site-packages when creating venv.
+# PyTorch and CUDA bindings come pre-installed with JetPack.
+# Do NOT pip install torch — use the JetPack version.
+#
+# Install: pip install -r requirements_jetson.txt
+
+# Core vision (no torch — inherited from JetPack system packages)
+ultralytics>=8.3.0
+numpy>=1.24.0,<2.0.0
+scipy>=1.11.0
+
+# OpenCV is inherited from system — install only if not present
+# opencv-python>=4.8.0
+
+# Multi-object tracking
+boxmot>=10.0.0
+supervision>=0.18.0
+
+# MAVLink and flight controller
+pymavlink>=2.4.40
+pyserial>=3.5
+
+# GCS browser server
+flask>=3.0.0
+
+# Utilities
+future>=0.18.3

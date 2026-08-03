@@ -1,0 +1,32 @@
+# ============================================================
+# Drone Tracker — Python Dependencies
+# Raspberry Pi 5 + Hailo-8L AI Hat
+# ============================================================
+# IMPORTANT: Use --system-site-packages when creating venv.
+# picamera2, libcamera, and hailo bindings come from system packages.
+# Install system packages first:
+#   sudo apt install hailo-all python3-picamera2 python3-libcamera
+#
+# Install: pip install -r requirements_rpi5.txt
+
+# Core vision
+ultralytics>=8.3.0
+numpy>=1.24.0,<2.0.0
+scipy>=1.11.0
+
+# OpenCV — use system version for hardware acceleration
+# opencv-python is inherited via system-site-packages
+
+# Multi-object tracking
+boxmot>=10.0.0
+supervision>=0.18.0
+
+# MAVLink and flight controller
+pymavlink>=2.4.40
+pyserial>=3.5
+
+# GCS browser server
+flask>=3.0.0
+
+# Utilities
+future>=0.18.3
