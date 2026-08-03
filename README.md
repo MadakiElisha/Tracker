@@ -26,6 +26,7 @@ controllers via MAVLink or MSP.
 This is not a toy tracker. It is a full perception-to-control pipeline designed
 for real deployment.
 
+Heads-up: You will find quite some duplicate files here and there. Those came about during dev. May come in handy for you.
 ---
 
 ## Key Features
@@ -92,7 +93,7 @@ for real deployment.
 ## Repository Structure
 
 ```
-drone-tracker/
+Tracker/
 │
 ├── tracker2bi.py          # Main integrated tracker (run this)
 ├── pid_controller2.py     # 3-axis PID controller (yaw, pitch, Z)
@@ -124,6 +125,7 @@ drone-tracker/
 ├── requirements_jetson.txt     # Jetson-specific dependencies
 ├── requirements_rpi5.txt       # RPi 5 + Hailo-8L dependencies
 └── .gitignore
+and some duplicates
 ```
 
 ---
@@ -141,8 +143,8 @@ drone-tracker/
 ### 1. Clone and install dependencies
 
 ```bash
-git clone https://github.com/<your-username>/drone-tracker.git
-cd drone-tracker
+git clone https://github.com/madakielisha/Tracker.git
+cd Tracker
 
 python3 -m venv venv
 source venv/bin/activate
@@ -174,14 +176,14 @@ python3 tracker2bi.py \
 | Action | Result |
 |--------|--------|
 | Click bounding box in OpenCV window | Lock on that specific target |
-| Press `L` | Lock on largest visible target |
+| Press `L` | Lock on target |
 | Press `R` | Release lock |
 | Press `T` | Arm and takeoff (requires SITL running) |
 | Press `H` | Return to home (RTL) |
 | Press `+` / `-` | Increase / decrease follow distance |
 | Press `Q` | Quit and RTL |
 | `rc 7 2000` in MAVProxy | RC switch lock (CH7) |
-| `rc 8 2000` in MAVProxy | RC switch release (CH8) |
+| `rc 7 1000` in MAVProxy | RC switch release (CH7) |
 | `rc 9 1000/1500/2000` | Filter: Any / Person / Vehicle |
 | Tap video in browser | GCS tap-to-lock |
 
@@ -230,8 +232,8 @@ http://<WSL2-IP>:8080
 |-------------|----------|------------|--------|
 | ArduPilot | MAVLink 2.0 | UART / UDP | ✅ Full support |
 | PX4 | MAVLink 2.0 | UART / UDP | ✅ Full support |
-| iNav | MSP | UART | 🔄 Phase 8 |
-| Betaflight | MSP | UART | 🔄 Phase 8 |
+| iNav | MSP | UART | 🔄 |
+| Betaflight | MSP | UART | 🔄 |
 
 ---
 
@@ -240,10 +242,10 @@ http://<WSL2-IP>:8080
 | Channel | Switch Type | Function |
 |---------|-------------|----------|
 | CH7 | 2-position momentary | Lock on largest visible target |
-| CH8 | 2-position toggle | Release lock |
+| CH7 | 2-position toggle | Release lock |
 | CH9 | 3-position switch | Class filter: Any / Person / Vehicle |
 
-In SITL, simulate with MAVProxy: `rc 7 2000`, `rc 8 2000`, `rc 9 1500`
+In SITL, simulate with MAVProxy: `rc 7 2000`, `rc 7 1000`, `rc 9 1500`
 
 ---
 
@@ -311,8 +313,7 @@ python3 deployment/export_hailo.py
 ## Known Limitations
 
 - Occlusion handling is Kalman-based prediction only — no appearance Re-ID yet
-  (Re-ID planned for Phase 8)
-- iNav and Betaflight MSP backends not yet implemented (Phase 8)
+- iNav and Betaflight MSP backends not yet implemented
 - GCS browser uses Flask development server — production deployment needs gunicorn
 - TensorRT engines are hardware-specific — rebuild on each target device
 
@@ -320,16 +321,16 @@ python3 deployment/export_hailo.py
 
 ## Roadmap
 
-- [x] Phase 1 — Simulation environment (Gazebo + ArduPilot SITL)
-- [x] Phase 2 — Perception pipeline (YOLO11n + ByteTrack)
-- [x] Phase 3 — FC abstraction layer (ArduPilot + PX4)
-- [x] Phase 4 — 3-axis PID controller
-- [x] Phase 5 — Target assignment (RC switch + GCS tap + mouse click)
-- [x] Phase 6 — Hardware deployment guides (Jetson + RPi5 + Hailo)
-- [ ] Phase 7 — iNav / Betaflight MSP RC injection
-- [ ] Phase 8 — Appearance-based Re-ID for full occlusion recovery
-- [ ] Phase 9 — OSD text injection to FPV goggles
-- [ ] Phase 10 — HDZero bounding box overlay on FPV feed
+- Simulation environment (Gazebo + ArduPilot SITL)
+- Perception pipeline (YOLO11n + ByteTrack)
+- FC abstraction layer (ArduPilot + PX4)
+- 3-axis PID controller
+- Target assignment (RC switch + GCS tap + mouse click)
+- Hardware deployment guides (Jetson + RPi5 + Hailo)
+- iNav / Betaflight MSP RC injection
+- Appearance-based Re-ID for full occlusion recovery
+- OSD text injection to FPV goggles
+- HDZero bounding box overlay on FPV feed
 
 ---
 
