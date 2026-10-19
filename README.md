@@ -362,3 +362,7 @@ MIT — do whatever you want with this, just don't use it to harm people.
 Built with ArduPilot SITL, Gazebo Harmonic, Ultralytics YOLO,
 ByteTrack, and pymavlink. Inspired by the capabilities of
 Skydio X10 and Anduril Bolt.
+
+## Production build
+Config: `config.yaml`. Tests: `pytest tests`. Sim validation: `docs/SIM_VALIDATION.md`. Older iterations are in `legacy/`.
+Not yet verified: live Gazebo closed loop, real hardware. Licence note: the VisDrone model (dronefreak/visdrone-yolov11n) is AGPL-3.0; review before keeping the MIT label.

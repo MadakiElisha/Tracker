@@ -79,3 +79,7 @@ htmlcov/
 # Pytest
 .pytest_cache/
 venv/
+logs/
+__pycache__/
+*.pt
+.pytest_cache/
