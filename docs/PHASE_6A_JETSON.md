@@ -237,7 +237,7 @@ PYEOF
     # Expected: 120-180 FPS, 5-8ms latency on Orin NX
 
 ### 4.3 Update YOLO_MODEL path in tracker
-    # In tracker2bi.py, change:
+    # In tracker.py, change:
     YOLO_MODEL = "yolo11n.pt"
     # To:
     YOLO_MODEL = "yolo11n.engine"
@@ -285,7 +285,7 @@ Use GStreamer pipeline for hardware-accelerated capture:
     )
     cap = cv2.VideoCapture(GSTREAMER_PIPELINE, cv2.CAP_GSTREAMER)
 
-    # In tracker2bi.py, replace the VideoCapture line with this
+    # In tracker.py, replace the VideoCapture line with this
     # when running on Jetson with CSI camera.
     # The pipeline: captures at 1280x720@60fps, downscales to 640x480 in GPU
 
@@ -363,7 +363,7 @@ ArduPilot FC settings (set in Mission Planner or QGC):
 
 This makes the tracker automatically pick TensorRT on Jetson,
 HailoRT on RPi 5, and standard PyTorch on dev/PC.
-Add this to tracker2bi.py:
+Add this to tracker.py:
 
     def detect_inference_backend():
         """Detect hardware and return appropriate model path and backend."""
@@ -423,7 +423,7 @@ No keyboard, no monitor, no manual launch needed.
     ExecStartPre=/usr/bin/nvpmodel -m 0
     ExecStartPre=/usr/bin/jetson_clocks
     ExecStart=/home/drone/drone_tracker/venv/bin/python3 \
-        tracker2bi.py \
+        tracker.py \
         --fc ardupilot \
         --connect /dev/ttyTHS0 \
         --no-display
@@ -439,7 +439,7 @@ No keyboard, no monitor, no manual launch needed.
 
 ### 8.2 Add --no-display flag to tracker
 When running headless (no monitor), OpenCV imshow crashes.
-Add this to tracker2bi.py argument parser:
+Add this to tracker.py argument parser:
 
     parser.add_argument('--no-display', action='store_true',
         help='Disable OpenCV window — headless/autostart mode')

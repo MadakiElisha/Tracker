@@ -1,17 +1,23 @@
+# Drone Tracker — dev / PC dependencies (Ubuntu 24.04, Python 3.12)
 ultralytics>=8.3.0
 opencv-python>=4.8.0
 numpy>=1.24.0,<2.0.0
 scipy
-boxmot
-supervision
 pymavlink
 pyserial
+future            # needed by pymavlink
 flask
 waitress
 pyyaml
 huggingface_hub
-future
 pytest
 pytest-mock
-# Sim camera (Gazebo Harmonic) comes from apt, not pip:
+
+# Optional: only for the standalone dev script perception.py
+# boxmot
+# supervision
+
+# Gazebo camera + move_target.py use the Gazebo Python bindings, which come
+# from apt (NOT pip) and are only visible in a venv created with
+# --system-site-packages:
 #   sudo apt install python3-gz-transport13 python3-gz-msgs10

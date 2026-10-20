@@ -262,7 +262,7 @@ PYEOF
     # Expected: 30-45 FPS, 22-33ms latency
 
 ### 5.2 Update YOLO_MODEL in tracker
-    # In tracker2bi.py:
+    # In tracker.py:
     YOLO_MODEL = "yolo11n.hef"
     # No other code changes needed — Ultralytics handles HailoRT transparently
 
@@ -424,7 +424,7 @@ configures everything correctly before launching the tracker.
 
     echo "[START] FC connection: $FC_CONNECT"
 
-    python3 tracker2bi.py \
+    python3 tracker.py \
         --fc ardupilot \
         --connect "$FC_CONNECT" \
         ${1:---no-display}

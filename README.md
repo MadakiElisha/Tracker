@@ -97,135 +97,65 @@ Heads-up: You will find quite some duplicate files here and there. Those came ab
 
 ```
 Tracker/
-│
-├── tracker2bi.py          # Main integrated tracker (run this)
-├── pid_controller2.py     # 3-axis PID controller (yaw, pitch, Z)
-├── fc_interface5.py       # FC abstraction layer (ArduPilot / PX4)
-├── perception.py          # Standalone perception pipeline (dev/test)
-├── gcs_server.py          # Browser GCS — MJPEG stream + tap-to-lock
-├── mouse_lock.py          # OpenCV window click-to-lock handler
-├── connection_test.py     # FC connection and takeoff test
+├── tracker.py             # Main tracker (run this)
+├── config.yaml            # ALL tunable parameters (PID, safety, classes, FC, GCS)
+├── pid_controller2.py     # 3-axis PID (config-driven, anti-windup, range-based distance)
+├── safety.py              # Failsafe supervisor (video/link loss, pilot override, battery)
+├── fc_interface5.py       # FC layer (ArduPilot; PX4 not implemented)
+├── tracker_state.py       # Shared thread-safe state
+├── gcs_server.py          # Browser view + tap-to-lock (token-protected)
+├── mouse_lock.py          # OpenCV click-to-lock
+├── gz_camera.py           # Gazebo camera source (--source gz:/drone/camera)
+├── run_logger.py          # Per-frame CSV run log
+├── analyze_run.py         # PASS/FAIL scoring of a run log
+├── model_download.py      # Fetches the VisDrone YOLO11n weights (best.pt)
+├── tracker_logger.py      # Logging helpers
 ├── inference_backend.py   # Hardware auto-detection (Jetson/RPi5/PC)
-│
-├── sim/                   # Simulation environment
-│   ├── launch_sim.sh      # Starts Gazebo + ArduPilot SITL
-│   ├── move_target.py     # Moves simulated targets in Gazebo
-│   ├── worlds/
-│   │   └── tracker_world.sdf   # Gazebo world (drone + targets + wall)
-│   └── params/
-│       └── ardupilot_tracker.param  # ArduPilot SITL parameters
-│
-├── deployment/            # Hardware deployment
-│   ├── export_tensorrt.py # Export YOLO11n → TensorRT (run on Jetson)
-│   ├── export_hailo.py    # Export YOLO11n → Hailo HEF (run on dev PC)
-│   └── start.sh           # Auto-detecting startup script
-│
-├── docs/
-│   ├── PHASE_6A_JETSON.md      # Complete Jetson deployment guide
-│   └── PHASE_6B_RPI5_HAILO.md  # Complete RPi 5 + Hailo-8L guide
-│
-├── requirements.txt            # Dev / PC dependencies
-├── requirements_jetson.txt     # Jetson-specific dependencies
-├── requirements_rpi5.txt       # RPi 5 + Hailo-8L dependencies
-└── .gitignore
-and some duplicates
+├── tests/                 # 172 tests: pytest tests
+├── sim/                   # launch_sim.sh, move_target.py, add_camera_to_iris.py, worlds/, params/
+├── scripts/setup_python_env.sh
+├── deployment/            # TensorRT / Hailo export
+├── docs/                  # SETUP_UBUNTU_24_04.md, SIM_VALIDATION.md, Jetson & RPi5 guides
+├── legacy/                # Earlier iterations kept for reference
+└── requirements*.txt
 ```
 
 ---
 
-## Quick Start — Simulation (SITL)
+## Quick Start
 
-### Prerequisites
-
-- Ubuntu 22.04 or 24.04 (native or WSL2)
-- Python 3.10+
-- ArduPilot SITL ([install guide](https://ardupilot.org/dev/docs/SITL-setup-landvehicles.html))
-- Gazebo Harmonic ([install guide](https://gazebosim.org/docs/harmonic/install))
-- ardupilot_gazebo plugin ([repo](https://github.com/ArduPilot/ardupilot_gazebo))
-
-### 1. Clone and install dependencies
+Full step-by-step for a fresh Ubuntu 24.04 machine: **[docs/SETUP_UBUNTU_24_04.md](docs/SETUP_UBUNTU_24_04.md)**.
 
 ```bash
-git clone https://github.com/madakielisha/Tracker.git
-cd Tracker
-
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+git clone https://github.com/MadakiElisha/Tracker.git && cd Tracker
+bash scripts/setup_python_env.sh && source venv/bin/activate   # venv, deps, model, tests
+python3 tracker.py --no-fly --source /path/to/video.mp4         # no simulator needed
 ```
 
-### 2. Start the simulation
+Full simulation (after installing Gazebo Harmonic, ArduPilot SITL and ardupilot_gazebo):
 
 ```bash
-# Terminal 1 — launch Gazebo + ArduPilot SITL
-cd sim && ./launch_sim.sh ardupilot
-# Wait for: STABILIZE> and "ALL SYSTEMS RUNNING"
-
-# Terminal 2 — start moving targets in the simulation
-source ../venv/bin/activate
-python3 sim/move_target.py
-
-# Terminal 3 — run the tracker
-source venv/bin/activate
-python3 tracker2bi.py \
-    --fc ardupilot \
-    --connect 127.0.0.1:14550 \
-    --source path/to/test_video.mp4 \
-    --no-fly
+python3 sim/add_camera_to_iris.py ~/ardupilot_gazebo      # once
+cd sim && ./launch_sim.sh ardupilot                       # terminal 1
+python3 sim/move_target.py                                # terminal 2
+python3 tracker.py --connect 127.0.0.1:14550 --source gz:/drone/camera   # terminal 3
 ```
 
-### 3. Test target locking
+| Key / action | Result |
+|---|---|
+| Click a box / `L` | Lock target |
+| `R` | Release lock |
+| `T` | Arm and take off |
+| `H` | Return to launch |
+| `K` | Land |
+| `+` / `-` | Follow distance |
+| `Q` | Quit (RTL if airborne) |
+| `rc 7 2000` / `rc 7 1000` in MAVProxy | RC lock / release |
+| `rc 9 1000/1500/2000` | Filter Any / Person / Vehicle |
+| Tap video at http://localhost:8080 | Browser lock (set `gcs.token`) |
 
-| Action | Result |
-|--------|--------|
-| Click bounding box in OpenCV window | Lock on that specific target |
-| Press `L` | Lock on target |
-| Press `R` | Release lock |
-| Press `T` | Arm and takeoff (requires SITL running) |
-| Press `H` | Return to home (RTL) |
-| Press `+` / `-` | Increase / decrease follow distance |
-| Press `Q` | Quit and RTL |
-| `rc 7 2000` in MAVProxy | RC switch lock (CH7) |
-| `rc 7 1000` in MAVProxy | RC switch release (CH7) |
-| `rc 9 1000/1500/2000` | Filter: Any / Person / Vehicle |
-| Tap video in browser | GCS tap-to-lock |
-
-### 4. Open the GCS browser
-
-```
-http://localhost:8080
-```
-
-Or from Windows/another device:
-```
-http://<WSL2-IP>:8080
-```
-
----
-
-## Full Flight Run (with SITL flying)
-
-```bash
-# After SITL is running and tracker is started:
-# In the OpenCV window or MAVProxy:
-
-# 1. Take off
-# Press T  (or in MAVProxy: mode guided → arm throttle → takeoff 10)
-
-# 2. Lock a target
-# Click any bounding box in the video window
-
-# 3. Watch the drone follow in Gazebo
-# Vx, Vz, Yaw values in HUD will be non-zero
-# Drone in Gazebo rotates and moves toward/with the target
-
-# 4. Test occlusion
-# Target will pass behind the wall in the world
-# Drone coasts, then re-acquires when target re-emerges
-
-# 5. Return home
-# Press H or flip CH8 on transmitter
-```
+Validation: `docs/SIM_VALIDATION.md`. Tests: `python3 -m pytest tests -q`.
+Status: unit and wiring tests pass; the live Gazebo closed loop and real hardware are NOT yet validated.
 
 ---
 
@@ -234,7 +164,7 @@ http://<WSL2-IP>:8080
 | FC Firmware | Protocol | Connection | Status |
 |-------------|----------|------------|--------|
 | ArduPilot | MAVLink 2.0 | UART / UDP | ✅ Full support |
-| PX4 | MAVLink 2.0 | UART / UDP | ✅ Full support |
+| PX4 | MAVLink 2.0 | UART / UDP | ❌ Not implemented |
 | iNav | MSP | UART | 🔄 |
 | Betaflight | MSP | UART | 🔄 |
 
@@ -287,23 +217,17 @@ python3 deployment/export_hailo.py
 ## Architecture Details
 
 ### Detection
-- **Model:** YOLO11n (Ultralytics)
-- **Classes tracked:** Person (0), Car (2), Motorcycle (3), Bus (5), Truck (7)
-- **Confidence threshold:** 0.45
-- **Input resolution:** 640×480
+- **Model:** YOLO11n fine-tuned on VisDrone (`dronefreak/visdrone-yolov11n`, AGPL-3.0)
+- **Classes (VisDrone IDs):** pedestrian 0, people 1, car 3, van 4, truck 5, bus 8, motor 9
+- **Confidence threshold / resolution:** see `config.yaml` (default 0.35, 640x480)
 
 ### Tracking
-- **Tracker:** ByteTrack (via boxmot)
-- **Occlusion tolerance:** 60 frames (~2-5 seconds depending on FPS)
-- **Kalman filter:** built into ByteTrack, predicts position during occlusion
-- **Re-ID warning:** displayed when confidence < 0.6 on re-acquired track
+- **Tracker:** ByteTrack via Ultralytics; lock dropped after `tracking.max_lost_frames`
 
 ### Control
-- **Yaw PID:** centres target horizontally (Kp=1.2, Ki=0.02, Kd=0.15)
-- **Pitch PID:** maintains follow distance via area estimation (Kp=8.0, Ki=0.05, Kd=1.5)
-- **Z PID:** maintains vertical centering of target in frame (Kp=1.5, Ki=0.01, Kd=0.2)
-- **Smoothing:** exponential low-pass filter (α=0.4) on all command outputs
-- **Watchdog:** 0.5s timeout forces zero-velocity hover if tracker stream dies
+- All gains and limits live in `config.yaml` (`pid:`, `flight:`, `safety:`)
+- Distance uses relative range error with per-class setpoints; forward motion is gated near frame edges
+- Safety supervisor: video loss, link loss, pilot mode change, battery -> hover / RTL / release
 
 ### FC Interface
 - Pure pymavlink (no DroneKit dependency)
@@ -317,7 +241,7 @@ python3 deployment/export_hailo.py
 
 - Occlusion handling is Kalman-based prediction only — no appearance Re-ID yet
 - iNav and Betaflight MSP backends not yet implemented
-- GCS browser uses Flask development server — production deployment needs gunicorn
+- GCS runs on waitress; set a token and keep it off untrusted networks
 - TensorRT engines are hardware-specific — rebuild on each target device
 
 ---
@@ -339,21 +263,15 @@ python3 deployment/export_hailo.py
 
 ## Dependencies
 
-| Package | Purpose |
-|---------|---------|
-| ultralytics | YOLO11n detection and tracking |
-| boxmot | ByteTrack multi-object tracker |
-| pymavlink | MAVLink FC communication |
-| opencv-python | Video capture and display |
-| flask | GCS browser server |
-| scipy | Kalman filter utilities |
-| pyserial | Serial UART communication |
+See `requirements.txt` (PC), `requirements_jetson.txt`, `requirements_rpi5.txt`. Python 3.12 on Ubuntu 24.04.
+System packages: `python3-venv libgl1 netcat-openbsd`, and for the simulator `gz-harmonic`,
+`python3-gz-transport13`, `python3-gz-msgs10`, ArduPilot SITL, ardupilot_gazebo.
 
 ---
 
 ## Licence
 
-MIT — do whatever you want with this, just don't use it to harm people.
+MIT for this code. NOTE: the VisDrone model weights are AGPL-3.0; review the combined licence before distributing.
 
 ---
 
@@ -363,6 +281,3 @@ Built with ArduPilot SITL, Gazebo Harmonic, Ultralytics YOLO,
 ByteTrack, and pymavlink. Inspired by the capabilities of
 Skydio X10 and Anduril Bolt.
 
-## Production build
-Config: `config.yaml`. Tests: `pytest tests`. Sim validation: `docs/SIM_VALIDATION.md`. Older iterations are in `legacy/`.
-Not yet verified: live Gazebo closed loop, real hardware. Licence note: the VisDrone model (dronefreak/visdrone-yolov11n) is AGPL-3.0; review before keeping the MIT label.
