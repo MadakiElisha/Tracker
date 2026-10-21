@@ -10,8 +10,9 @@ ATC_ACCEL_Y_MAX,110000
 ATC_ACCEL_P_MAX,110000
 ATC_ACCEL_R_MAX,110000
 
-# --- Disable arming checks for SITL convenience ---
-ARMING_CHECK,0
+# --- Skip pre-arm checks (SIMULATOR ONLY, never on a real drone) ---
+# ArduPilot 4.5+ renamed ARMING_CHECK to ARMING_SKIPCHK (bitmask, -1 = skip all)
+ARMING_SKIPCHK,-1
 
 # --- EKF ---
 EK3_ENABLE,1
