@@ -10,9 +10,8 @@ ATC_ACCEL_Y_MAX,110000
 ATC_ACCEL_P_MAX,110000
 ATC_ACCEL_R_MAX,110000
 
-# --- Skip pre-arm checks (SIMULATOR ONLY, never on a real drone) ---
-# ArduPilot 4.5+ renamed ARMING_CHECK to ARMING_SKIPCHK (bitmask, -1 = skip all)
-ARMING_SKIPCHK,-1
+# --- Arming: leave ALL pre-arm checks enabled. Fix the cause of any PreArm message
+# instead of skipping checks (ARMING_CHECK was renamed ARMING_SKIPCHK in ArduPilot 4.5+).
 
 # --- EKF ---
 EK3_ENABLE,1
