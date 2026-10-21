@@ -81,6 +81,12 @@ if [ "$FC" = "ardupilot" ]; then
     # STAGE 3: Now start SITL.
     # ----------------------------------------------------------
     echo "[STAGE 3/3] Starting ArduPilot SITL..."
+    export PATH="$PATH:$HOME/ardupilot/Tools/autotest"
+    if ! command -v sim_vehicle.py >/dev/null 2>&1; then
+        echo "[ERROR] sim_vehicle.py not found. Is ArduPilot cloned at ~/ardupilot?"
+        cleanup
+        exit 1
+    fi
     cd ~/ardupilot
     
     sim_vehicle.py \
