@@ -66,9 +66,9 @@ if [ "$FC" = "ardupilot" ]; then
             exit 1
         fi
 
-        if [ $WAIT -ge 60 ]; then
+        if [ $WAIT -ge 180 ]; then
             echo ""
-            echo "[ERROR] Gazebo world did not start after 60s."
+            echo "[ERROR] Gazebo world did not start after 180s (first run downloads models: run sim/fetch_models.sh)."
             cleanup
             exit 1
         fi

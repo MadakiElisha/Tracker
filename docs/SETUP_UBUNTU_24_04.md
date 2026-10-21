@@ -69,6 +69,13 @@ cd ~/Tracker
 python3 sim/add_camera_to_iris.py ~/ardupilot_gazebo      # undo with --revert
 ```
 
+## 6b. Download the realistic sim models (one time, needs internet)
+```bash
+cd ~/Tracker && ./sim/fetch_models.sh      # ~100 MB of CC0 models from Gazebo Fuel, cached in ~/.gz/fuel
+```
+The world uses real-looking people, cars, a bus, trees and cones, because the VisDrone model does not
+detect plain boxes. Moving actors: `moving_target` (person), `moving_person2`, `vehicle_target` (pickup), `moving_suv`.
+
 ## 7. Run the full sim (3 terminals)
 ```bash
 # Terminal 1 - Gazebo + SITL (ends at the MAVProxy prompt)
