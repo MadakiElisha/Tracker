@@ -96,16 +96,29 @@ def check_follow(rows, min_seconds, settle_s=10.0,
     return (PASS if ok else FAIL), detail
 
 
+RANGE_DEADBAND = 0.05      # = pid.pitch.deadzone (relative range error)
+
+
+def _range_err(r):
+    """Same error the pitch loop acts on: sqrt(setpoint/area) - 1 (positive = too far)."""
+    area = max(_f(r["area"]), 1e-6)
+    return (max(_f(r["setpoint"]), 1e-6) / area) ** 0.5 - 1.0
+
+
 def check_no_creep(rows):
     tr = _tracking_rows(rows)
     still = [r for r in tr
              if abs(_f(r["err_x"])) < 0.03 and abs(_f(r["err_y"])) < 0.04
-             and abs(_f(r["setpoint"]) - _f(r["area"])) < 0.015]
+             and abs(_range_err(r)) < RANGE_DEADBAND]
     if len(still) < 30:
         return INCONCLUSIVE, "target never held steady inside the deadbands"
-    creeping = sum(_cmd_mag(r) > 0.08 for r in still) / len(still)
-    return (PASS if creeping < 0.05 else FAIL), \
-        f"{creeping:.1%} of in-deadband frames commanded motion (limit 5%)"
+    moving = [r for r in still if _cmd_mag(r) > 0.08]
+    creeping = len(moving) / len(still)
+    detail = f"{creeping:.1%} of in-deadband frames commanded motion (limit 5%)"
+    if moving:
+        axis = {k: sum(abs(_f(r[k])) > 0.08 for r in moving) for k in ("cmd_vx", "cmd_vz", "cmd_yaw")}
+        detail += f"; offending axes (frames): {axis}"
+    return (PASS if creeping < 0.05 else FAIL), detail
 
 
 def check_lock_loss(rows, max_lost_frames=60, decay_s=1.0):

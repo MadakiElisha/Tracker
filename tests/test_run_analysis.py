@@ -138,3 +138,9 @@ def test_run_logger_disabled_writes_nothing(tmp_path):
     lg.row(frame=1)
     lg.close()
     assert not (tmp_path / "x").exists()
+
+
+def test_correcting_a_large_range_error_is_not_creep():
+    # area 0.033 vs setpoint 0.02 is a 22% range error: commanding motion is correct there
+    rows = [mk(i / 30, area=0.033, cmd_vx=-0.6) for i in range(30 * 20)]
+    assert status(ar.run_all(rows, 5), "no creep at rest") != ar.FAIL
