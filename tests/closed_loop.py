@@ -61,6 +61,8 @@ class Result:
     alt: List[float] = field(default_factory=list)
     yaw_cmd: List[float] = field(default_factory=list)
     dist: List[float] = field(default_factory=list)
+    cmd_vx: List[float] = field(default_factory=list)
+    cmd_vz: List[float] = field(default_factory=list)
 
 
 def project(cam, psi, pitch, p):
@@ -149,6 +151,8 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
         res.t.append(t)
         res.alt.append(z)
         res.yaw_cmd.append(cyaw)
+        res.cmd_vx.append(cvx)
+        res.cmd_vz.append(cvz)
         res.dist.append(math.hypot(tx - x, ty - y))
         if tb is None:
             res.visible.append(False)
