@@ -108,7 +108,7 @@ Tracker/
 ├── gz_camera.py           # Gazebo camera source (--source gz:/drone/camera)
 ├── run_logger.py          # Per-frame CSV run log
 ├── analyze_run.py         # PASS/FAIL scoring of a run log
-├── model_download.py      # Fetches the VisDrone YOLO11n weights (best.pt)
+├── model_download.py      # Fetches the VisDrone YOLO11n weights (visdrone_yolo11n.pt)
 ├── tracker_logger.py      # Logging helpers
 ├── inference_backend.py   # Hardware auto-detection (Jetson/RPi5/PC)
 ├── tests/                 # 172 tests: pytest tests

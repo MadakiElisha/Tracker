@@ -6,7 +6,7 @@
 
 # --- Model & Detection ---
 model:
-  path: "best.pt"               # visdrone model filename
+  path: "visdrone_yolo11n.pt"   # written by model_download.py
   source: "dronefreak/visdrone-yolov11n"  # HuggingFace repo
   conf_threshold: 0.35          # lower than COCO because VisDrone targets are small
   iou_threshold: 0.45           # NMS overlap threshold

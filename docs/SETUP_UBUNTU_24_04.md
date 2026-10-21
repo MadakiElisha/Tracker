@@ -20,7 +20,7 @@ python3 -m pytest tests -q             # expect: 172 passed
 ```
 The script creates the venv with `--system-site-packages` (required so Python can see the
 Gazebo bindings installed by apt), installs `requirements.txt`, downloads the VisDrone model
-(`best.pt`) and runs the tests.
+(`visdrone_yolo11n.pt`) and runs the tests.
 
 ## 2. Quick check without any simulator
 ```bash
@@ -93,7 +93,7 @@ See `SIM_VALIDATION.md` for the 8 checks.
 
 ## Troubleshooting
 - `ModuleNotFoundError: gz` -> venv was made without `--system-site-packages`; recreate it.
-- `Model file not found: best.pt` -> `python3 model_download.py`.
+- `Model file not found: visdrone_yolo11n.pt` -> `python3 model_download.py`.
 - No frames from `gz:` -> camera patch not applied, or Gazebo restarted before the patch.
 - SITL never opens port 5760 -> ArduPilot not built, or its venv not active.
 - Browser view not reachable from another PC -> firewall; and set `gcs.token`.
