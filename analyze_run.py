@@ -81,9 +81,10 @@ def check_follow(rows, min_seconds, settle_s=10.0,
         return INCONCLUSIVE, "too few samples after settle time"
     centred = sum(abs(_f(r["err_x"])) < 0.15 and abs(_f(r["err_y"])) < 0.20
                   for r in body) / len(body)
+    # "within +-20% of the desired distance": relative RANGE error (what the PID controls),
+    # not area (area error is ~2x the range error, so +-20% area would be ~+-10% range).
     dist_ok = sum(
-        _f(r["setpoint"]) > 0 and
-        abs(_f(r["area"]) - _f(r["setpoint"])) <= 0.20 * _f(r["setpoint"])
+        _f(r["setpoint"]) > 0 and _f(r["area"]) > 0 and abs(_range_err(r)) <= 0.20
         for r in body) / len(body)
     # oscillation: sign flips of meaningful yaw commands
     ys = [_f(r["cmd_yaw"]) for r in body if abs(_f(r["cmd_yaw"])) > 0.05]

@@ -144,3 +144,9 @@ def test_correcting_a_large_range_error_is_not_creep():
     # area 0.033 vs setpoint 0.02 is a 22% range error: commanding motion is correct there
     rows = [mk(i / 30, area=0.033, cmd_vx=-0.6) for i in range(30 * 20)]
     assert status(ar.run_all(rows, 5), "no creep at rest") != ar.FAIL
+
+
+def test_follow_distance_is_judged_on_range_not_area():
+    # setpoint 0.01, area 0.014 -> range error -16% (inside +-20%) even though area is 40% off
+    rows = [mk(i / 30, area=0.014) for i in range(30 * 90)]
+    assert status(ar.run_all(rows, 60), "follow target") == ar.PASS
