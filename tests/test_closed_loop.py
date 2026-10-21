@@ -102,3 +102,29 @@ def test_fast_pickup_patrol_never_lost_nominal():
                       target_h=1.5, target_w=3.0, fps=14.0, latency_frames=2, seed=1)
     m = cl.metrics(cl.run(scn, CFG), 10.0)
     assert m['visible_frac'] >= 0.99
+
+
+def test_parked_target_with_detector_jitter_does_not_creep(monkeypatch):
+    """Regression for the first stationary-target sim run: box-size jitter (~5 px) made the
+    forward command swing +-0.7 m/s through the derivative term (48% of in-deadband frames
+    commanded motion). Measured exactly as analyze_run.py does."""
+    rec = []
+    orig = cl.TrackerPID.compute
+
+    def spy(self, box, w, h, class_id=None):
+        a = ((box[2] - box[0]) * (box[3] - box[1])) / (w * h)
+        out = orig(self, box, w, h, class_id)
+        rec.append((((box[0] + box[2]) / 2) / w - 0.5, ((box[1] + box[3]) / 2) / h - 0.5,
+                    self.distance_error(a, class_id), out))
+        return out
+
+    monkeypatch.setattr(cl.TrackerPID, "compute", spy)
+    scn = cl.Scenario("parked", cl.stationary(15.0, 0.0), duration_s=120, class_id=3,
+                      target_h=1.5, target_w=3.0, pixel_noise=5.5, fps=30.0,
+                      latency_frames=2, seed=1)
+    cl.run(scn, CFG)
+    rows = rec[30 * 30:]
+    still = [x for x in rows if abs(x[0]) < 0.03 and abs(x[1]) < 0.04 and abs(x[2]) < 0.05]
+    assert len(still) > 100
+    creeping = sum(max(abs(v) for v in x[3]) > 0.08 for x in still) / len(still)
+    assert creeping < 0.05, f"{creeping:.0%} of in-deadband frames commanded motion"

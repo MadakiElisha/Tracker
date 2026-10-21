@@ -71,14 +71,15 @@ pid:
     enabled: true
     x_start: 0.20              # |err_x| above this starts slowing the approach
     x_full: 0.45               # ...and stops it entirely here
-    y_start: 0.25
-    y_full: 0.45
+    y_start: 0.22              # was 0.25/0.45: with a sluggish airframe + latency the drone coasted
+    y_full: 0.42               # in and the target slid out of the bottom of the frame (tuned in the model)
   pitch:
     kp: 4.0                    # m/s per 100% relative range error. Tuned in the closed-loop model against
                                # the sim log (was kp 3.0/ki 0.1 -> 36% of frames within +-20% range).
                                # kp >= 5 lost the target under 200 ms latency + sluggish airframe.
     ki: 1.0
-    kd: 0.2
+    kd: 0.1                    # was 0.2: the derivative amplified detector box jitter into +-0.7 m/s
+                               # forward-command swings on a parked target (creep check failed at 48%)
     i_limit_frac: 0.5          # integral may contribute at most 50% of output_limit
     output_limit: 3.0          # max m/s forward/back
     deadzone: 0.05             # 5% of the desired range

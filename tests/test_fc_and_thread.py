@@ -255,6 +255,10 @@ def test_pilot_override_stops_commands_and_flags_release():
         st.cmd.update(1.0, 0.0, 0.0)
         sup.note_frame()
         time.sleep(0.03)
+    for _ in range(100):                     # the FC thread zeroes the stale command on its next tick
+        if st.cmd.read() == (0.0, 0.0, 0.0):
+            break
+        time.sleep(0.02)
     stop(th, st)
     # Safety property: no MOTION while the pilot has control. (A zero-velocity hover from
     # a coincident video-loss rule under heavy CPU load is harmless, so it is not counted.)
