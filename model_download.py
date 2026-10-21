@@ -64,7 +64,9 @@ def download_model(repo_id: str,
 
     # Copy to working directory with a clean name
     import shutil
-    shutil.copy(path, output_name)
+    if os.path.exists(output_name):
+        os.chmod(output_name, 0o644)   # earlier copy may be read-only
+    shutil.copyfile(path, output_name)   # copyfile: don't inherit read-only mode
     size_mb = os.path.getsize(output_name) / 1024 / 1024
     print(f"[DOWNLOAD] Complete in {elapsed:.1f}s — {size_mb:.1f}MB → {output_name}")
     return output_name

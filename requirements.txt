@@ -3,6 +3,7 @@ ultralytics>=8.3.0
 opencv-python>=4.8.0
 numpy>=1.24.0,<2.0.0
 scipy
+lap               # ByteTrack matching; ultralytics would otherwise auto-install it at first run
 pymavlink
 pyserial
 future            # needed by pymavlink
