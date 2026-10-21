@@ -15,7 +15,7 @@ Nothing here has been run on real Gazebo yet; the offline model (`tests/closed_l
 | # | Check | How to provoke | Pass |
 |---|-------|----------------|------|
 | 1 | Follow | Target walks/drives 5 min | centred >=90%, range within +-20% >=80%, yaw flips <=10/10 s |
-| 2 | No creep | Target stationary | no drift commands |
+| 2 | No creep | Lock a STATIONARY target (parked car / standing person), hold ~60 s | no drift commands; run `analyze_run.py FILE --locks` to find the window, then `--rest-window START END` |
 | 3 | Lock loss | Move target out of view | lock drops, drone hovers |
 | 4 | Occlusion | Pass target behind obstacle | lock/ID recovered or cleanly dropped |
 | 5 | Failsafes | Kill video; kill MAVLink; low battery | HOVER, then RTL per `safety:` |

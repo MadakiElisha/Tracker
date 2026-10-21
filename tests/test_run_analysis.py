@@ -59,7 +59,7 @@ def test_short_run_is_inconclusive_not_pass():
 
 def test_creep_at_rest_detected():
     rows = [mk(i / 30, cmd_vx=0.5) for i in range(30 * 20)]
-    assert status(ar.run_all(rows, 5), "no creep at rest") == ar.FAIL
+    assert status(ar.run_all(rows, 5, rest_window=(0, 20)), "no creep at rest") == ar.FAIL
 
 
 def test_lock_loss_ok_when_commands_decay_and_lock_released():
@@ -143,10 +143,25 @@ def test_run_logger_disabled_writes_nothing(tmp_path):
 def test_correcting_a_large_range_error_is_not_creep():
     # area 0.033 vs setpoint 0.02 is a 22% range error: commanding motion is correct there
     rows = [mk(i / 30, area=0.033, cmd_vx=-0.6) for i in range(30 * 20)]
-    assert status(ar.run_all(rows, 5), "no creep at rest") != ar.FAIL
+    assert status(ar.run_all(rows, 5, rest_window=(0, 20)), "no creep at rest") != ar.FAIL
 
 
 def test_follow_distance_is_judged_on_range_not_area():
     # setpoint 0.01, area 0.014 -> range error -16% (inside +-20%) even though area is 40% off
     rows = [mk(i / 30, area=0.014) for i in range(30 * 90)]
     assert status(ar.run_all(rows, 60), "follow target") == ar.PASS
+
+
+def test_creep_inconclusive_without_rest_window():
+    rows = [mk(i / 30, cmd_vx=0.5) for i in range(30 * 20)]
+    assert status(ar.run_all(rows, 5), "no creep at rest") == ar.INCONCLUSIVE
+
+
+def test_creep_passes_when_still_target_gets_no_commands():
+    rows = [mk(i / 30) for i in range(30 * 20)]
+    assert status(ar.run_all(rows, 5, rest_window=(0, 20)), "no creep at rest") == ar.PASS
+
+
+def test_creep_only_judges_the_rest_window():
+    rows = [mk(i / 30, cmd_vx=(0.5 if i < 30 * 10 else 0.0)) for i in range(30 * 20)]
+    assert status(ar.run_all(rows, 5, rest_window=(10.5, 20)), "no creep at rest") == ar.PASS
