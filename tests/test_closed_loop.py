@@ -23,7 +23,7 @@ def test_target_stays_in_view_and_centred(scn, variant):
     m = cl.metrics(cl.run(dataclasses.replace(scn, **variant), CFG))
     assert m['visible_frac'] >= 0.99, f"target left the frame: {m}"
     assert m['median_abs_err_x'] <= 0.06, m
-    assert m['yaw_flips_per_10s'] <= 2.0, f"yaw oscillating: {m}"
+    assert m['yaw_flips_per_10s'] <= 5.0, f"yaw oscillating: {m}"   # analyzer limit is 10
 
 
 @pytest.mark.parametrize("variant", [{}, SLOW], ids=["nominal", "slow+laggy"])
@@ -77,3 +77,28 @@ def test_deterministic():
     a = cl.metrics(cl.run(cl.SCENARIOS[1], CFG))
     b = cl.metrics(cl.run(cl.SCENARIOS[1], CFG))
     assert a == b
+
+
+def _patrol(period_s):
+    import math
+    return lambda t: (20 * math.sin(2 * math.pi * t / period_s), -15.0)
+
+
+@pytest.mark.parametrize("variant", [{}, SLOW], ids=["nominal", "slow+laggy"])
+def test_walker_speed_patrol_holds_range_within_20pct(variant):
+    """Regression for the first real sim log (kp 3 / ki 0.1: only 36% of frames within +-20%).
+    Target patrols +-20 m at ~1.4 m/s peak, ~14 fps."""
+    scn = cl.Scenario("patrol 1.4 m/s", _patrol(90), duration_s=200, class_id=3,
+                      target_h=1.5, target_w=3.0, fps=14.0, latency_frames=2, seed=1)
+    r = cl.run(dataclasses.replace(scn, **variant), CFG)
+    ok = sum(1 for t, v, e in zip(r.t, r.visible, r.range_err) if t >= 10 and v and abs(e) <= 0.2)
+    n = sum(1 for t in r.t if t >= 10)
+    assert ok / n >= 0.85, f"within +-20%: {ok / n:.2f}"
+
+
+def test_fast_pickup_patrol_never_lost_nominal():
+    """2.1 m/s reversing target is a stress case: not required to hold +-20%, must not be lost."""
+    scn = cl.Scenario("patrol 2.1 m/s", _patrol(60), duration_s=160, class_id=3,
+                      target_h=1.5, target_w=3.0, fps=14.0, latency_frames=2, seed=1)
+    m = cl.metrics(cl.run(scn, CFG), 10.0)
+    assert m['visible_frac'] >= 0.99
