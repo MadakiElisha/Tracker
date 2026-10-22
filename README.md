@@ -1,3 +1,4 @@
+
 # 🎯 Drone Tracker
 ### Autonomous Multi-Class Target Detection, Locking, and Follow System
 
@@ -11,7 +12,8 @@
 
 </div>
 
-<img width="1920" height="1080" alt="Screenshot from 2026-10-21 15-35-32" src="https://github.com/user-attachments/assets/daefda50-e09c-4479-9533-adac1466e9b0" />
+<img width="1920" height="1080" alt="Screenshot from 2026-10-21 14-18-33" src="https://github.com/user-attachments/assets/f56c82c6-3027-4b5c-b79b-07e242baef0a" />
+
 
 https://github.com/user-attachments/assets/f46b534b-2e52-4799-8fc5-a2ddc32986d9
 
