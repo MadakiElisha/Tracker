@@ -265,7 +265,7 @@ class TrackerPID:
             raw_vx = max(-lim, min(lim, raw_vx + self.ff_gain * v_t))
         if self.gate_enabled and raw_vx > 0.0:      # only gate approaching, never retreat
             raw_vx *= (_ramp(abs(error_x), *self.gate_x) *
-                       _ramp(abs(error_y), *self.gate_y))
+                       _ramp(abs(error_y_ctrl), *self.gate_y))
 
         if self.max_accel_x > 0.0:
             now = self._clock_fn()

@@ -107,7 +107,7 @@ USE_CASES = [
             expect="exceeds_airframe", note="needs an airframe faster than the modelled one", **CAR),
 ]
 
-AIRFRAME = dict(max_speed=20.0, max_accel=5.0, tilt_coupling=True, tau_v=0.5, latency_frames=3,
+AIRFRAME = dict(max_speed=20.0, max_accel=5.0, tilt_coupling=True, tilt_comp=True, tau_v=0.5, latency_frames=3,
                 fps=30.0, pixel_noise=2.0, dropout=0.02, seed=1)
 
 

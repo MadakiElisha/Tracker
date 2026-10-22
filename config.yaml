@@ -173,14 +173,15 @@ run_log:
 camera:
   hfov_deg: 90.0               # must match the camera (sim: 90; see sim/add_camera_to_iris.py)
   pitch_deg: 20.0              # mount pitch below the horizon
-  gimbal: false                # true = camera is stabilised against body tilt (needed above ~4 m/s)
+  gimbal: false                # true = camera is stabilised against body tilt (recommended above ~10 m/s)
 
 # --- Mission profiles (python3 tracker.py --profile NAME) ---
 # Opt-in overrides merged onto the values above. Validated in the offline closed-loop model
 # (python3 tests/usecases.py), NOT yet on real hardware. Each profile pairs a speed cap with a
 # matched altitude and follow distance: the slant range must exceed altitude / sin(camera elevation
-# limit), otherwise the target would have to sit below the drone. Fast profiles need a gimbal:
-# with a fixed camera the drone's own tilt (30-40 deg at speed) pushes the target out of frame.
+# limit), otherwise the target would have to sit below the drone. With a fixed camera the drone's own
+# tilt (30-40 deg at speed) moves the target in the image; the controller corrects for it using the
+# flight controller's attitude. A gimbal still gives more margin (see docs/SIM_VALIDATION.md).
 profiles:
   pedestrian:                  # walking / jogging, up to ~4 m/s; fixed camera is acceptable
     flight: {max_forward_speed: 4.0, target_altitude: 6.0}
@@ -189,27 +190,27 @@ profiles:
       z: {mode: altitude, target_altitude: 6.0}
       feedforward: {enabled: false}   # fixed camera: feed-forward noise hurts at walking speed
       setpoint_area_by_class: {0: 0.003, 1: 0.003}
-  runner:                      # sprinter / cyclist, up to ~10 m/s; gimbal required
-    camera: {gimbal: true}
+  runner:                      # sprinter / cyclist, up to ~10 m/s
+    camera: {gimbal: false}
     flight: {max_forward_speed: 10.0, target_altitude: 6.0}
     pid:
-      pitch: {kp: 4.0, ki: 0.2, kd: 0.1, i_limit_frac: 0.8, output_limit: 10.0}
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 10.0}
       z: {mode: altitude, target_altitude: 6.0}
       feedforward: {enabled: true}
       setpoint_area_by_class: {0: 0.003, 1: 0.003}
-  vehicle:                     # cars / vans / trucks / buses, up to ~16 m/s; gimbal required
-    camera: {gimbal: true}
+  vehicle:                     # cars / vans / trucks / buses, up to ~16 m/s
+    camera: {gimbal: false}
     flight: {max_forward_speed: 16.0, target_altitude: 10.0, max_altitude: 40.0}
     pid:
-      pitch: {kp: 4.0, ki: 0.2, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
       z: {mode: altitude, target_altitude: 10.0}
       feedforward: {enabled: true}
       setpoint_area_by_class: {3: 0.004, 4: 0.005, 5: 0.008, 8: 0.010}
-  motorcycle:                  # motorbikes / scooters / cyclists, up to ~20 m/s; gimbal required
-    camera: {gimbal: true}
+  motorcycle:                  # motorbikes / scooters / cyclists, up to ~20 m/s
+    camera: {gimbal: false}
     flight: {max_forward_speed: 20.0, target_altitude: 8.0}
     pid:
-      pitch: {kp: 4.0, ki: 0.2, kd: 0.1, i_limit_frac: 0.8, output_limit: 20.0}
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 20.0}
       z: {mode: altitude, target_altitude: 8.0}
       feedforward: {enabled: true}
       setpoint_area_by_class: {9: 0.0025}

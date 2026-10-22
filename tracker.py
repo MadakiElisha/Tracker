@@ -433,9 +433,9 @@ def main():
         log.info("Mission profile '%s': cap %.1f m/s, altitude %.1f m, gimbal=%s",
                  args.profile, cfg['flight']['max_forward_speed'], cfg['flight']['target_altitude'],
                  cfg.get('camera', {}).get('gimbal', False))
-        if cfg['flight']['max_forward_speed'] > 4.0 and not cfg.get('camera', {}).get('gimbal', False):
-            log.warning("Profile '%s' flies above ~4 m/s without a stabilised camera: the drone's own tilt "
-                        "will push the target out of frame.", args.profile)
+        if cfg['flight']['max_forward_speed'] > 10.0 and not cfg.get('camera', {}).get('gimbal', False):
+            log.warning("Profile '%s' flies above ~10 m/s without a stabilised camera: tilt "
+                        "corrections have little margin left; a gimbal is recommended.", args.profile)
 
     fw, fh = cfg['video']['frame_width'], cfg['video']['frame_height']
     state = TrackerState()

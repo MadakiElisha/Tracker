@@ -13,8 +13,8 @@ MUST_PASS = [uc for uc in u.USE_CASES if uc.expect == "pass"]
 
 
 @pytest.mark.parametrize("uc", MUST_PASS, ids=lambda uc: uc.name)
-def test_use_case_matrix(uc):
-    m = u.evaluate(uc, CFG)
+def test_use_case_matrix_with_gimbal(uc):
+    m = u.evaluate(uc, CFG, gimbal=True)
     assert u.verdict(m) == "PASS", m
 
 
@@ -41,10 +41,9 @@ def test_unknown_profile_rejected():
         apply_profile(CFG, 'warp')
 
 
-def test_fast_profiles_declare_gimbal():
+def test_profiles_assume_fixed_camera_by_default():
     for name, p in CFG['profiles'].items():
-        if p['flight']['max_forward_speed'] > 4.0:
-            assert p.get('camera', {}).get('gimbal') is True, name
+        assert p.get('camera', {}).get('gimbal', False) is False, name
 
 
 def test_altitude_mode_holds_altitude_when_target_centred():
@@ -70,3 +69,27 @@ def test_estimator_untrusted_without_altitude():
     assert est.speed(0.0) == 0.0                       # no data yet -> untrusted -> 0
     est.reset()
     assert est.update(0.0, (300, 220, 340, 260), 640, 480, alt_m=None, tilt_rad=0.0, v_drone_fwd=5.0) == 0.0
+
+
+# ---- fixed camera (no gimbal): the tilt-corrected gate removed a speed oscillation ----
+FIXED_CAM_MUST_PASS = ["pedestrian walking", "jogger", "sprinter", "cyclist", "motorcycle 15",
+                       "city car 12 m/s", "lane changes", "cornering", "bus", "pickup patrol"]
+
+
+@pytest.mark.parametrize("key", FIXED_CAM_MUST_PASS)
+def test_fixed_camera_use_cases(key):
+    uc = next(x for x in u.USE_CASES if key in x.name)
+    m = u.evaluate(uc, CFG, gimbal=False)
+    assert u.verdict(m) == "PASS", m
+
+
+def test_forward_gate_uses_tilt_corrected_vertical_error():
+    """A lean that shifts the target in the image must not close the forward gate when the
+    tilt-corrected position is fine (otherwise speed oscillates)."""
+    pid = TrackerPID.from_config(CFG['pid'])
+    # small, far target (area below setpoint -> wants to advance), high in the frame
+    box = (310, 40, 330, 70)
+    vx_flat = pid.compute(box, 640, 480, class_id=3, tilt_rad=0.0)[0]
+    pid.reset()
+    vx_leaned = pid.compute(box, 640, 480, class_id=3, tilt_rad=math.radians(35))[0]
+    assert vx_leaned > vx_flat       # compensation re-centres the vertical error and opens the gate

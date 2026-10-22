@@ -29,21 +29,27 @@ Record results per run; tune `pid:` in `config.yaml` only between runs.
 
 `config.yaml` has a `profiles:` section; select one with `python3 tracker.py --profile vehicle ...`.
 
-| Profile | Cap | Altitude | Camera | Targets |
-|---|---|---|---|---|
-| pedestrian | 4 m/s | 6 m | fixed OK | walking, jogging |
-| runner | 10 m/s | 6 m | **gimbal** | sprinters |
-| vehicle | 16 m/s | 10 m | **gimbal** | cars, vans, buses |
-| motorcycle | 20 m/s | 8 m | **gimbal** | motorbikes, cyclists |
+| Profile | Cap | Altitude | Targets |
+|---|---|---|---|
+| pedestrian | 4 m/s | 6 m | walking, jogging |
+| runner | 10 m/s | 6 m | sprinters |
+| vehicle | 16 m/s | 10 m | cars, vans, buses |
+| motorcycle | 20 m/s | 8 m | motorbikes, cyclists |
 
-Offline model matrix (`python3 tests/usecases.py`, also run by pytest): 11 of 12 pass. The
-28 m/s highway case fails by design: it exceeds the modelled 20 m/s airframe.
+Offline model (`python3 tests/usecases.py [--gimbal off]`, also run by pytest):
+- **Fixed camera (no gimbal): 10 of 12 pass.** Fails: stop-and-go traffic (target visible 96% of the
+  time, just under the 98% bar: hard stops flip the lean) and the 28 m/s highway car.
+- **With a gimbal: 11 of 12 pass.** Only the highway car fails: it exceeds the modelled 20 m/s airframe.
 
-**Limits.** This is a model, not Gazebo and not a flight. Above ~4 m/s a fixed camera loses the
-target as the drone leans (30-45 deg at speed), so those profiles assume a stabilised gimbal.
-Tilt comes from MAVLink ATTITUDE, altitude and ground speed from GLOBAL_POSITION_INT. Not yet
-validated in Gazebo; `sim/move_target.py` still moves actors at 10 Hz, which is too coarse for
-10+ m/s targets. There is no obstacle avoidance.
+**What made the fixed camera work.** The drone leans 30-45 deg at speed and the camera leans with it.
+The controller now (a) reads tilt from MAVLink ATTITUDE and corrects the vertical image error, and
+(b) uses that corrected error in the forward-speed gate. Before (b), each lean closed the gate, which
+cut speed, which flipped the lean: a 4-16 m/s oscillation that threw the target out of frame
+(fixed camera passed 2 of 12; now 10 of 12).
+
+**Limits.** This is a model, not Gazebo and not a flight. Not yet validated in Gazebo or on hardware.
+A 10-15 inch frame leans harder than the model's airframe, so expect less margin; a gimbal, or a
+camera mounted with extra up-tilt, is the next step if real flights lose the target. No obstacle avoidance.
 
 **Target speeds in Gazebo.** `python3 sim/move_target.py --person-speed 1.4` (walk, default),
 `--person-speed 3` (jog), `--vehicle-speed 8`. Speeds are wall-clock exact. The old fixed circle
