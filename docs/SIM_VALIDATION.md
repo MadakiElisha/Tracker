@@ -44,3 +44,7 @@ target as the drone leans (30-45 deg at speed), so those profiles assume a stabi
 Tilt comes from MAVLink ATTITUDE, altitude and ground speed from GLOBAL_POSITION_INT. Not yet
 validated in Gazebo; `sim/move_target.py` still moves actors at 10 Hz, which is too coarse for
 10+ m/s targets. There is no obstacle avoidance.
+
+**Target speeds in Gazebo.** `python3 sim/move_target.py --person-speed 1.4` (walk, default),
+`--person-speed 3` (jog), `--vehicle-speed 8`. Speeds are wall-clock exact. The old fixed circle
+moved the person at 3.1 m/s, a fast jog, not a walk.
