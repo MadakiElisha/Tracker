@@ -111,9 +111,9 @@ def test_parked_target_with_detector_jitter_does_not_creep(monkeypatch):
     rec = []
     orig = cl.TrackerPID.compute
 
-    def spy(self, box, w, h, class_id=None):
+    def spy(self, box, w, h, class_id=None, **kw):
         a = ((box[2] - box[0]) * (box[3] - box[1])) / (w * h)
-        out = orig(self, box, w, h, class_id)
+        out = orig(self, box, w, h, class_id, **kw)
         rec.append((((box[0] + box[2]) / 2) / w - 0.5, ((box[1] + box[3]) / 2) / h - 0.5,
                     self.distance_error(a, class_id), out))
         return out

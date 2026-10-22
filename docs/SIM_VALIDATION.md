@@ -24,3 +24,23 @@ Nothing here has been run on real Gazebo yet; the offline model (`tests/closed_l
 | 8 | Logs | after every run | CSV complete, analyzer runs |
 
 Record results per run; tune `pid:` in `config.yaml` only between runs.
+
+## Speed use cases and mission profiles
+
+`config.yaml` has a `profiles:` section; select one with `python3 tracker.py --profile vehicle ...`.
+
+| Profile | Cap | Altitude | Camera | Targets |
+|---|---|---|---|---|
+| pedestrian | 4 m/s | 6 m | fixed OK | walking, jogging |
+| runner | 10 m/s | 6 m | **gimbal** | sprinters |
+| vehicle | 16 m/s | 10 m | **gimbal** | cars, vans, buses |
+| motorcycle | 20 m/s | 8 m | **gimbal** | motorbikes, cyclists |
+
+Offline model matrix (`python3 tests/usecases.py`, also run by pytest): 11 of 12 pass. The
+28 m/s highway case fails by design: it exceeds the modelled 20 m/s airframe.
+
+**Limits.** This is a model, not Gazebo and not a flight. Above ~4 m/s a fixed camera loses the
+target as the drone leans (30-45 deg at speed), so those profiles assume a stabilised gimbal.
+Tilt comes from MAVLink ATTITUDE, altitude and ground speed from GLOBAL_POSITION_INT. Not yet
+validated in Gazebo; `sim/move_target.py` still moves actors at 10 Hz, which is too coarse for
+10+ m/s targets. There is no obstacle avoidance.

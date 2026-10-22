@@ -26,6 +26,7 @@
 """
 
 import argparse
+import math
 import sys
 import threading
 import time
@@ -38,6 +39,7 @@ import yaml
 from tracker_logger  import setup_logging, get_logger
 from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
+from profiles        import apply_profile
 from fc_interface5   import FCInterface
 from gcs_server      import GCSServer
 from mouse_lock      import MouseLocker
@@ -414,11 +416,26 @@ def main():
     parser.add_argument('--connect', default=cfg['fc'].get('connection', '127.0.0.1:14550'))
     parser.add_argument('--source',  default=str(cfg['video'].get('source', '0')),
                         help='Camera index or video file path')
+    parser.add_argument('--profile', default=cfg.get('active_profile'),
+                        help='Mission profile from config.yaml `profiles:` '
+                             f"({', '.join(sorted((cfg.get('profiles') or {})))})")
     parser.add_argument('--no-fly',     action='store_true',
                         help='Perception + PID only; no FC commands are sent')
     parser.add_argument('--no-display', action='store_true',
                         help='Headless: no OpenCV window')
     args = parser.parse_args()
+    if args.profile:
+        try:
+            cfg = apply_profile(cfg, args.profile)
+        except ValueError as e:
+            log.error("%s", e)
+            sys.exit(2)
+        log.info("Mission profile '%s': cap %.1f m/s, altitude %.1f m, gimbal=%s",
+                 args.profile, cfg['flight']['max_forward_speed'], cfg['flight']['target_altitude'],
+                 cfg.get('camera', {}).get('gimbal', False))
+        if cfg['flight']['max_forward_speed'] > 4.0 and not cfg.get('camera', {}).get('gimbal', False):
+            log.warning("Profile '%s' flies above ~4 m/s without a stabilised camera: the drone's own tilt "
+                        "will push the target out of frame.", args.profile)
 
     fw, fh = cfg['video']['frame_width'], cfg['video']['frame_height']
     state = TrackerState()
@@ -480,7 +497,12 @@ def main():
     model = YOLO(model_path)
     log.info("Model loaded: %s", model_path)
 
-    pid = TrackerPID.from_config(cfg['pid'])
+    cam = cfg.get('camera', {})
+    pid_cfg = dict(cfg['pid'])
+    pid_cfg.setdefault('camera_hfov_deg', cam.get('hfov_deg', 90.0))
+    pid_cfg.setdefault('camera_pitch_deg', cam.get('pitch_deg', 20.0))
+    gimbal = bool(cam.get('gimbal', False))
+    pid = TrackerPID.from_config(pid_cfg)
 
     target_classes = {int(k): v for k, v in cfg['classes']['targets'].items()}
     class_groups   = cfg['classes']['groups']
@@ -654,7 +676,14 @@ def main():
                 if lt is not None:
                     locked_box = (int(lt[0]), int(lt[1]), int(lt[2]), int(lt[3]))
                     locked_cls = int(lt[6])
-                    vx, vz, yaw = pid.compute(locked_box, fw, fh, class_id=locked_cls)
+                    tm = fc.get_telemetry() if fc is not None else {}
+                    hdg = math.radians(tm.get('heading', 0))
+                    v_fwd = tm.get('vx', 0.0) * math.cos(hdg) + tm.get('vy', 0.0) * math.sin(hdg)
+                    vx, vz, yaw = pid.compute(
+                        locked_box, fw, fh, class_id=locked_cls,
+                        tilt_rad=0.0 if gimbal else tm.get('tilt_rad', 0.0),
+                        alt_m=tm.get('alt') if fc is not None else None,
+                        v_drone_fwd=v_fwd)
                     state.cmd.update(vx, vz, yaw)
                 else:
                     state.cmd.decay(0.5 ** (dt / half_life))   # time-based decay

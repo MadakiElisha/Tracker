@@ -49,6 +49,14 @@ class Scenario:
     tau_w: float = 0.3
     min_alt: float = 3.0
     max_alt: float = 30.0
+    # airframe realism (defaults keep the original ideal behaviour)
+    max_speed: float = 1e9           # m/s, horizontal airframe limit
+    max_accel: float = 1e9           # m/s^2, horizontal acceleration limit
+    tilt_coupling: bool = False      # camera pitch follows body pitch (fixed camera)
+    gimbal: bool = False             # camera stays at cam_pitch_deg regardless of body tilt
+    drag_tilt_deg_per_ms: float = 1.2   # steady-speed lean from drag, degrees per m/s
+    tilt_comp: bool = False          # pass measured body tilt to the controller (tilt compensation)
+    flight_cap: float = 1e9          # speed cap applied on the command (like flight.max_forward_speed)
 
 
 @dataclass
@@ -61,6 +69,8 @@ class Result:
     alt: List[float] = field(default_factory=list)
     yaw_cmd: List[float] = field(default_factory=list)
     dist: List[float] = field(default_factory=list)
+    speed: List[float] = field(default_factory=list)
+    tilt_deg: List[float] = field(default_factory=list)
     cmd_vx: List[float] = field(default_factory=list)
     cmd_vz: List[float] = field(default_factory=list)
 
@@ -110,9 +120,14 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
         pid.setpoint_by_class = {}
     x, y, z, psi = scn.start
     vx = vz = wz = 0.0
-    pitch = math.radians(scn.cam_pitch_deg)
+    pitch0 = math.radians(scn.cam_pitch_deg)
+    pitch = pitch0
+    ax = 0.0
     cmd = (0.0, 0.0, 0.0)
     hist: List[Tuple[float, float, float, float, float, float]] = []
+    pitch_hist: List[float] = []
+    tilt_hist: List[float] = []
+    tilt = 0.0
     res = Result()
     sp = pid.setpoint_for(scn.class_id)
 
@@ -122,26 +137,36 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
         now[0] = t
         tx, ty = scn.target_path(t)
         hist.append((x, y, z, psi, tx, ty))
+        pitch_hist.append(pitch)
+        tilt_hist.append(tilt)
         # sensing uses the state `latency` frames ago
         lag = max(0, len(hist) - 1 - scn.latency_frames)
         sx, sy, sz, spsi, stx, sty = hist[lag]
         box = None
         if rng.random() >= scn.dropout:
-            box = bbox((sx, sy, sz), spsi, pitch, stx, sty,
+            box = bbox((sx, sy, sz), spsi, pitch_hist[lag], stx, sty,
                        scn.target_h, scn.target_w, rng, scn.pixel_noise)
         if box is not None:
-            cmd = pid.compute(box, W, H, class_id=scn.class_id)
+            cmd = pid.compute(box, W, H, class_id=scn.class_id,
+                              tilt_rad=(0.0 if (scn.gimbal or not scn.tilt_comp) else tilt_hist[lag]),
+                              alt_m=sz, v_drone_fwd=vx)
         else:
             f = 0.5 ** (dt / 0.15)                      # same time-based decay as tracker.py
             cmd = (cmd[0] * f, cmd[1] * f, cmd[2] * f)
         cvx, cvz, cyaw = cmd
+        cvx = max(-scn.flight_cap, min(scn.flight_cap, cvx))
         cvz = limit_vertical(cvz, z, scn.min_alt, scn.max_alt)
 
-        # vehicle: first-order response, body-frame forward, NED vz (+down)
-        vx += (cvx - vx) * dt / scn.tau_v
+        # vehicle: first-order response with acceleration + speed limits, body-frame forward, NED vz (+down)
+        ax = max(-scn.max_accel, min(scn.max_accel, (cvx - vx) / scn.tau_v))
+        vx += ax * dt
+        vx = max(-scn.max_speed, min(scn.max_speed, vx))
         vz += (cvz - vz) * dt / scn.tau_v
         wz += (-cyaw - wz) * dt / scn.tau_w           # +yaw cmd = clockwise = psi decreasing
         psi += wz * dt
+        # body tilt: acceleration lean + drag lean (nose down = positive); a fixed camera follows it
+        tilt = math.atan2(ax, 9.81) + math.radians(scn.drag_tilt_deg_per_ms) * vx
+        pitch = pitch0 if (scn.gimbal or not scn.tilt_coupling) else pitch0 + tilt
         x += vx * math.cos(psi) * dt
         y += vx * math.sin(psi) * dt
         z -= vz * dt
@@ -151,6 +176,8 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
         res.t.append(t)
         res.alt.append(z)
         res.yaw_cmd.append(cyaw)
+        res.speed.append(vx)
+        res.tilt_deg.append(math.degrees(tilt))
         res.cmd_vx.append(cvx)
         res.cmd_vz.append(cvz)
         res.dist.append(math.hypot(tx - x, ty - y))

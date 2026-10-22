@@ -275,6 +275,8 @@ class ArduPilotBackend(FCBackend):
 
         self._send_command(mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
                            65, int(1e6 / max(1, self.fc_cfg.get('telemetry_rate_hz', 10))))
+        self._send_command(mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+                           30, int(1e6 / max(1, self.fc_cfg.get('attitude_rate_hz', 20))))   # ATTITUDE
         ack = self.master.recv_match(type='COMMAND_ACK', blocking=True, timeout=3.0)
         if ack is None:
             log.warning("No COMMAND_ACK for RC_CHANNELS interval request; RC stream may be inactive.")
@@ -284,7 +286,7 @@ class ArduPilotBackend(FCBackend):
 
         self._telem = {"armed": False, "mode": "UNKNOWN", "alt": 0.0,
                        "heading": 0, "vx": 0.0, "vy": 0.0, "vz": 0.0,
-                       "battery": 0.0, "gps_sats": 0}
+                       "battery": 0.0, "gps_sats": 0, "tilt_rad": 0.0}
         self._telem_lock = threading.Lock()
         self._last_rx = time.monotonic()
 
@@ -321,7 +323,7 @@ class ArduPilotBackend(FCBackend):
             try:
                 msg = self.master.recv_match(
                     type=['HEARTBEAT', 'GLOBAL_POSITION_INT', 'SYS_STATUS',
-                          'GPS_RAW_INT', 'RC_CHANNELS'],
+                          'GPS_RAW_INT', 'RC_CHANNELS', 'ATTITUDE'],
                     blocking=True, timeout=0.1)
                 if msg is None:
                     if not silent_warned and time.monotonic() - self._last_rx > 3.0:
@@ -348,6 +350,10 @@ class ArduPilotBackend(FCBackend):
                             msg.vx / 100.0, msg.vy / 100.0, msg.vz / 100.0)
                         if msg.hdg != 65535:
                             self._telem["heading"] = int(msg.hdg / 100)
+                elif t == 'ATTITUDE':
+                    with self._telem_lock:
+                        # MAVLink pitch is nose-UP positive; the controller uses nose-DOWN positive
+                        self._telem["tilt_rad"] = -float(msg.pitch)
                 elif t == 'SYS_STATUS':
                     with self._telem_lock:
                         # 65535 / -1 mean "not reported"

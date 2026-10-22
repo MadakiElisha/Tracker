@@ -130,6 +130,7 @@ class TrackerPID:
     def __init__(self, cfg: Optional[dict] = None,
                  clock: Callable[[], float] = time.monotonic):
         cfg = cfg or {}
+        self._clock_fn = clock
         max_dt = cfg.get('max_dt', 0.2)
 
         def mk(name, d_kp, d_ki, d_kd, d_lim, d_dz):
@@ -156,6 +157,15 @@ class TrackerPID:
         else:
             self.pitch_pid = mk('pitch', 8.0, 0.05, 1.50, 3.0, 0.015)
 
+        zc = cfg.get('z', {})
+        self.z_mode = zc.get('mode', 'image')                # 'image' (legacy) | 'altitude'
+        if self.z_mode not in ('image', 'altitude'):
+            raise ValueError(f"pid.z.mode must be 'image' or 'altitude', got {self.z_mode!r}")
+        self.z_target_alt = float(zc.get('target_altitude', 10.0))
+        self.z_alt_kp = float(zc.get('altitude_kp', 0.5))     # m/s per metre of altitude error
+        self.z_edge = float(zc.get('image_edge', 0.30))       # |err_y| beyond this: image keeps target in view
+        self.z_out_limit = float(zc.get('output_limit', 1.5))
+
         self.setpoint_area = cfg.get('setpoint_area', 0.02)
         self.setpoint_by_class = {int(k): float(v) for k, v in
                                   cfg.get('setpoint_area_by_class', {}).items()}
@@ -167,6 +177,23 @@ class TrackerPID:
         self.gate_x = (g.get('x_start', 0.20), g.get('x_full', 0.45))
         self.gate_y = (g.get('y_start', 0.25), g.get('y_full', 0.45))
         self.smooth_alpha = cfg.get('smooth_alpha', 0.4)
+        self.camera_hfov_deg = float(cfg.get('camera_hfov_deg', 90.0))
+        ff = cfg.get('feedforward', {}) or {}
+        self.ff_enabled = bool(ff.get('enabled', False))
+        self.ff_gain = float(ff.get('gain', 1.0))
+        self.estimator = None
+        if self.ff_enabled:
+            from target_estimator import TargetMotionEstimator
+            self.estimator = TargetMotionEstimator(
+                hfov_deg=self.camera_hfov_deg,
+                cam_pitch_deg=float(cfg.get('camera_pitch_deg', 20.0)),
+                pixel_sigma=float(ff.get('pixel_sigma', 3.0)),
+                accel_sigma=float(ff.get('accel_sigma', 3.0)),
+                deadband_ms=float(ff.get('deadband_ms', 0.7)),
+                max_speed=float(ff.get('max_speed', 30.0)),
+                max_vel_sigma=float(ff.get('max_vel_sigma', 1.5)))
+        self.max_accel_x = float(cfg.get('max_accel', 0.0))     # m/s^2 slew limit on vx (0 = off)
+        self._last_cmd_t = None
         self.drift_cutoff = cfg.get('drift_cutoff', 0.05)
 
         self._smooth_vx  = 0.0
@@ -193,10 +220,15 @@ class TrackerPID:
         return min(math.sqrt(sp / a) - 1.0, self.max_range_error)
 
     def compute(self, target_box, frame_w: int, frame_h: int,
-                class_id: Optional[int] = None):
+                class_id: Optional[int] = None, tilt_rad: float = 0.0,
+                alt_m: Optional[float] = None, v_drone_fwd: float = 0.0):
         """
         Returns (vx, vz, yaw_rate).
         vx forward m/s, vz m/s (NED: positive = DOWN), yaw_rate rad/s.
+
+        tilt_rad: body pitch, nose-DOWN positive, from telemetry. A fixed camera leans with
+        the drone, so a nose-down tilt shifts the target UP in the image; the vertical loop
+        works on the tilt-compensated error so it does not chase the drone's own lean.
         """
         x1, y1, x2, y2 = target_box
         cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
@@ -206,12 +238,42 @@ class TrackerPID:
         error_y = (cy / frame_h) - 0.5
         current_area = (bw * bh) / (frame_w * frame_h)
 
+        error_y_ctrl = error_y
+        if tilt_rad:
+            f_px = (frame_w / 2.0) / math.tan(math.radians(self.camera_hfov_deg) / 2.0)
+            ang = math.atan(error_y * frame_h / f_px) + tilt_rad      # angle below the camera axis, nominal frame
+            error_y_ctrl = f_px * math.tan(max(-1.4, min(1.4, ang))) / frame_h
+
         raw_yaw = self.yaw_pid.compute(error_x)
-        raw_vz  = self.z_pid.compute(error_y)
+        if self.z_mode == 'altitude' and alt_m is not None:
+            # hold the commanded altitude; the image only intervenes when the target nears the
+            # top/bottom edge (so a fast chase does not drift down to the altitude floor)
+            excess = 0.0
+            if abs(error_y_ctrl) > self.z_edge:
+                excess = math.copysign(abs(error_y_ctrl) - self.z_edge, error_y_ctrl)
+            alt_term = max(-self.z_out_limit, min(self.z_out_limit,
+                                                  self.z_alt_kp * (alt_m - self.z_target_alt)))
+            raw_vz = max(-self.z_out_limit, min(self.z_out_limit,
+                                                alt_term + self.z_pid.compute(excess)))
+        else:
+            raw_vz = self.z_pid.compute(error_y_ctrl)
         raw_vx  = self.pitch_pid.compute(self.distance_error(current_area, class_id))
+        if self.estimator is not None:
+            v_t = self.estimator.update(self._clock_fn(), target_box, frame_w, frame_h,
+                                        alt_m, tilt_rad, v_drone_fwd)
+            lim = self.pitch_pid.output_limit
+            raw_vx = max(-lim, min(lim, raw_vx + self.ff_gain * v_t))
         if self.gate_enabled and raw_vx > 0.0:      # only gate approaching, never retreat
             raw_vx *= (_ramp(abs(error_x), *self.gate_x) *
                        _ramp(abs(error_y), *self.gate_y))
+
+        if self.max_accel_x > 0.0:
+            now = self._clock_fn()
+            if self._last_cmd_t is not None:
+                dt = min(max(now - self._last_cmd_t, 1e-3), 0.2)
+                step = self.max_accel_x * dt
+                raw_vx = max(self._smooth_vx - step, min(self._smooth_vx + step, raw_vx))
+            self._last_cmd_t = now
 
         a = self.smooth_alpha
         self._smooth_yaw = a * self._smooth_yaw + (1 - a) * raw_yaw
@@ -228,7 +290,10 @@ class TrackerPID:
         self.yaw_pid.reset()
         self.z_pid.reset()
         self.pitch_pid.reset()
+        if self.estimator is not None:
+            self.estimator.reset()
         self._smooth_vx = self._smooth_vz = self._smooth_yaw = 0.0
+        self._last_cmd_t = None
 
     def get_debug_info(self, target_box, frame_w, frame_h,
                        class_id: Optional[int] = None) -> dict:
