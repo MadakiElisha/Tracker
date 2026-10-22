@@ -192,6 +192,8 @@ class TrackerPID:
                 deadband_ms=float(ff.get('deadband_ms', 0.7)),
                 max_speed=float(ff.get('max_speed', 30.0)),
                 max_vel_sigma=float(ff.get('max_vel_sigma', 1.5)))
+        rl = cfg.get('reverse_limit')            # m/s; limits backing away (None = same as output_limit)
+        self.reverse_limit = None if rl is None else float(rl)
         self.max_accel_x = float(cfg.get('max_accel', 0.0))     # m/s^2 slew limit on vx (0 = off)
         self._last_cmd_t = None
         self.drift_cutoff = cfg.get('drift_cutoff', 0.05)
@@ -266,6 +268,9 @@ class TrackerPID:
         if self.gate_enabled and raw_vx > 0.0:      # only gate approaching, never retreat
             raw_vx *= (_ramp(abs(error_x), *self.gate_x) *
                        _ramp(abs(error_y_ctrl), *self.gate_y))
+
+        if self.reverse_limit is not None and raw_vx < -self.reverse_limit:
+            raw_vx = -self.reverse_limit
 
         if self.max_accel_x > 0.0:
             now = self._clock_fn()

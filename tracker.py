@@ -40,6 +40,7 @@ from tracker_logger  import setup_logging, get_logger
 from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
 from profiles        import apply_profile
+from class_vote      import ClassVote
 from fc_interface5   import FCInterface
 from gcs_server      import GCSServer
 from mouse_lock      import MouseLocker
@@ -503,6 +504,7 @@ def main():
     pid_cfg.setdefault('camera_pitch_deg', cam.get('pitch_deg', 20.0))
     gimbal = bool(cam.get('gimbal', False))
     pid = TrackerPID.from_config(pid_cfg)
+    class_vote = ClassVote(cfg['tracking'].get('class_vote_frames', 60))
 
     target_classes = {int(k): v for k, v in cfg['classes']['targets'].items()}
     class_groups   = cfg['classes']['groups']
@@ -675,7 +677,7 @@ def main():
                 lt = next((t for t in tracks if int(t[4]) == state.locked_id), None)
                 if lt is not None:
                     locked_box = (int(lt[0]), int(lt[1]), int(lt[2]), int(lt[3]))
-                    locked_cls = int(lt[6])
+                    locked_cls = class_vote.update(state.locked_id, int(lt[6]))
                     tm = fc.get_telemetry() if fc is not None else {}
                     hdg = math.radians(tm.get('heading', 0))
                     v_fwd = tm.get('vx', 0.0) * math.cos(hdg) + tm.get('vy', 0.0) * math.sin(hdg)

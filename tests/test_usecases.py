@@ -93,3 +93,33 @@ def test_forward_gate_uses_tilt_corrected_vertical_error():
     pid.reset()
     vx_leaned = pid.compute(box, 640, 480, class_id=3, tilt_rad=math.radians(35))[0]
     assert vx_leaned > vx_flat       # compensation re-centres the vertical error and opens the gate
+
+
+# ---- class voting and reverse limit (found in the first vehicle Gazebo run) ----
+def test_class_vote_ignores_brief_flips_and_resets_on_new_lock():
+    from class_vote import ClassVote
+    v = ClassVote(window=30)
+    out = [v.update(7, c) for c in [3] * 10 + [5, 5] + [3] * 5 + [4]]
+    assert set(out) == {3}
+    assert v.update(8, 5) == 5                 # a new lock id starts over
+
+
+def test_class_vote_follows_a_real_change():
+    from class_vote import ClassVote
+    v = ClassVote(window=20)
+    for _ in range(5): v.update(1, 3)
+    last = [v.update(1, 8) for _ in range(30)][-1]
+    assert last == 8
+
+
+def test_reverse_limit_caps_backing_away_only():
+    big = (200, 100, 440, 380)                 # far too close
+
+    def worst(limit):
+        cfg = dict(CFG['pid'], reverse_limit=limit)
+        cfg['pitch'] = dict(cfg['pitch'], output_limit=16.0)
+        pid = TrackerPID.from_config(cfg)
+        return min(pid.compute(big, 640, 480, class_id=3)[0] for _ in range(30))
+
+    assert -2.0 - 1e-9 <= worst(2.0) < 0
+    assert worst(None) < -2.0
