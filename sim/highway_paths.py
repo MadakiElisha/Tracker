@@ -47,3 +47,11 @@ def pose(t: float, speed: float, accel: float, y0: float, delay: float = 0.0,
     x = min(x0 + d, ROAD_END_X)
     y = y0 + lane_offset(t, delay, lane_every_s, lane_width)
     return x, y, 0.0
+
+
+def vanished(t: float, delay: float, every_s: float, for_s: float) -> bool:
+    """True while a target should be hidden (to provoke a detector dropout / track-id change on demand)."""
+    if every_s <= 0.0 or for_s <= 0.0:
+        return False
+    tt = t - delay
+    return tt >= every_s and ((tt - every_s) % (every_s + for_s)) < for_s

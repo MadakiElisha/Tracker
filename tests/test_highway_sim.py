@@ -158,3 +158,12 @@ def test_mover_help_runs_without_gazebo():
     r = subprocess.run([sys.executable, os.path.join(SIM, "move_highway.py"), "--help"],
                        capture_output=True, text=True, timeout=20)
     assert r.returncode == 0 and "--car-speed" in r.stdout
+
+
+def test_vanish_schedule():
+    assert not hp.vanished(100, 0, 0, 1.5)                       # disabled
+    assert not hp.vanished(5, 0, 10, 1.5)                        # before the first hide
+    hidden = [hp.vanished(t / 10, 0, 10, 1.5) for t in range(0, 400)]
+    assert hidden[100] and hidden[114] and not hidden[116]       # hidden 10.0-11.5 s
+    assert hidden[215] and not hidden[260]                       # next at 21.5 s (period 11.5)
+    assert not hp.vanished(0.0, 20, 10, 1.5) and not hp.vanished(25, 20, 10, 1.5)   # respects start delay

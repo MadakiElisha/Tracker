@@ -35,6 +35,10 @@ def main():
                          "(tests the chase on its own, not the acquisition)")
     ap.add_argument("--lane-changes", type=float, default=0.0, metavar="SECONDS",
                     help="car changes lane every SECONDS seconds (default 0 = never)")
+    ap.add_argument("--vanish-every", type=float, default=0.0, metavar="SECONDS",
+                    help="hide the target for --vanish-for seconds every SECONDS seconds of motion: a repeatable test "
+                         "of dropout coasting and re-ID (default 0 = never)")
+    ap.add_argument("--vanish-for", type=float, default=1.5, help="seconds hidden each time (default 1.5)")
     ap.add_argument("--rate", type=float, default=30.0, help="pose updates per second (default 30)")
     ap.add_argument("--car-yaw-offset", type=float, default=0.0, help="radians, if the car model faces the wrong way")
     ap.add_argument("--runner-yaw-offset", type=float, default=0.0, help="radians, same for the runner")
@@ -76,7 +80,8 @@ def main():
                 yaw += yaw_off
                 req = Pose()
                 req.name = name
-                req.position.x, req.position.y, req.position.z = x, y, 0.0
+                hidden = hp.vanished(t, args.start_delay, args.vanish_every, args.vanish_for)
+                req.position.x, req.position.y, req.position.z = x, y, (-50.0 if hidden else 0.0)
                 req.orientation.w, req.orientation.z = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
                 ok, _ = node.request(service, req, Pose, Boolean, 500)
                 failures = 0 if ok else failures + 1
