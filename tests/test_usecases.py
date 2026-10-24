@@ -73,7 +73,8 @@ def test_estimator_untrusted_without_altitude():
 
 # ---- fixed camera (no gimbal): the tilt-corrected gate removed a speed oscillation ----
 FIXED_CAM_MUST_PASS = ["pedestrian walking", "jogger", "sprinter", "cyclist", "motorcycle 15",
-                       "city car 12 m/s", "lane changes", "cornering", "bus", "pickup patrol"]
+                       "city car 12 m/s", "lane changes", "cornering", "bus", "pickup patrol",
+                       "highway sprinter 10", "highway car 20"]
 
 
 @pytest.mark.parametrize("key", FIXED_CAM_MUST_PASS)
@@ -123,3 +124,16 @@ def test_reverse_limit_caps_backing_away_only():
 
     assert -2.0 - 1e-9 <= worst(2.0) < 0
     assert worst(None) < -2.0
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3, 4])
+def test_highway_car_robust_across_noise_seeds(seed):
+    uc = next(x for x in u.USE_CASES if x.name == "highway car 20 m/s")
+    m = u.evaluate(uc, CFG, gimbal=False, airframe=dict(seed=seed))
+    assert u.verdict(m) == "PASS", m
+
+
+def test_highway_cases_run_longer_than_a_minute_after_settling():
+    for key in ("highway sprinter 10", "highway car 20"):
+        uc = next(x for x in u.USE_CASES if key in x.name)
+        assert uc.duration - 15.0 >= 60.0

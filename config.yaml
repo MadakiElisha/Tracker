@@ -219,3 +219,22 @@ profiles:
       z: {mode: altitude, target_altitude: 8.0}
       feedforward: {enabled: true}
       setpoint_area_by_class: {9: 0.0025}
+  highway_runner:              # sprinter on a long straight, up to ~10 m/s (cap must exceed target speed to close the gap)
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 14.0, target_altitude: 6.0}
+    pid:
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 14.0}
+      reverse_limit: 3.0
+      z: {mode: altitude, target_altitude: 6.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {0: 0.003, 1: 0.003}
+  highway:                     # car on a highway, up to ~20 m/s; needs SITL params sim/params/ardupilot_fast.param
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 24.0, target_altitude: 8.0, max_altitude: 40.0}
+    pid:
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 24.0}
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 8.0}
+      feedforward: {enabled: true}
+      # only the car (class 3) is validated at 20 m/s; the others are scaled guesses
+      setpoint_area_by_class: {3: 0.008, 4: 0.010, 5: 0.014, 8: 0.016}

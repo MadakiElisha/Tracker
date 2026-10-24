@@ -1,0 +1,15 @@
+# Overrides for high-speed pursuit (10-20 m/s). Loaded AFTER ardupilot_tracker.param by
+# `launch_sim.sh ardupilot highway`; the default launch does not use this file.
+#
+# Guided-mode velocity commands are limited by WPNAV_SPEED / WPNAV_ACCEL, so the tracker's
+# 16-24 m/s caps are only reachable if these are raised too.
+
+WPNAV_SPEED,2500       # 25 m/s horizontal speed limit (cm/s)
+WPNAV_ACCEL,600        # 6 m/s^2 horizontal acceleration (cm/s^2); also bounds body lean transients
+LOIT_SPEED,2500
+ANGLE_MAX,6000         # allow 60 deg of lean (cdeg); 30 deg default caps speed at roughly 12 m/s
+PSC_ANGLE_MAX,0        # 0 = derive from ANGLE_MAX
+RTL_SPEED,1500         # return at 15 m/s
+GUID_TIMEOUT,1.0       # stop if the tracker goes silent for 1 s (default 3 s is too long at 20 m/s)
+
+# Arming checks are NOT touched: fix the cause of any PreArm message instead.

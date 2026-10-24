@@ -83,7 +83,15 @@ class UseCase:
     expect: str = "pass"          # "pass" | "exceeds_airframe" (informational)
     start: Optional[Tuple[float, float, float, float]] = None   # x, y, z, psi override
     profile: str = "pedestrian"   # profile in config.yaml that this use case is flown with
+    airframe: Optional[dict] = None   # overrides on AIRFRAME for this case (e.g. AIRFRAMES['quad_10_15in'])
     note: str = ""
+
+
+# Airframe presets. quad_10_15in is an ASSUMED typical 10-15 inch frame (no measured data): fast, strong
+# thrust, acceleration limited by the autopilot (WPNAV_ACCEL 600 cm/s^2 in ardupilot_fast.param).
+AIRFRAMES = {
+    "quad_10_15in": dict(max_speed=30.0, max_accel=6.0, drag_tilt_deg_per_ms=1.0),
+}
 
 
 PERSON = dict(class_id=0, h=1.7, w=0.5)
@@ -105,6 +113,11 @@ USE_CASES = [
     UseCase("sim pickup patrol, 2.1 m/s peak", patrol(2.1), duration=120, start=(0.0, 0.0, 10.0, -math.pi / 2), **CAR),
     UseCase("highway car 28 m/s", line(28.0, hold_s=5, accel=3.0), duration=60,
             expect="exceeds_airframe", note="needs an airframe faster than the modelled one", **CAR),
+    # --- long straight road (2 km), assumed 10-15 inch quad, fixed camera, runs > 60 s after settling ---
+    UseCase("highway sprinter 10 m/s", line(10.0, hold_s=5, accel=3.0), duration=100,
+            profile="highway_runner", airframe=AIRFRAMES["quad_10_15in"], note="2 km road", **{k: v for k, v in PERSON.items()}),
+    UseCase("highway car 20 m/s", line(20.0, hold_s=5, accel=3.0), duration=120,
+            airframe=AIRFRAMES["quad_10_15in"], note="2 km road", **{**CAR, "profile": "highway"}),
 ]
 
 AIRFRAME = dict(max_speed=20.0, max_accel=5.0, tilt_coupling=True, tilt_comp=True, tau_v=0.5, latency_frames=3,
@@ -120,7 +133,7 @@ def evaluate(uc: UseCase, cfg: dict, gimbal=None, airframe=None, extra=None):
     alt = c['flight'].get('target_altitude', 10.0)
     if gimbal is None:
         gimbal = bool(c.get('camera', {}).get('gimbal', False))
-    kw = dict(AIRFRAME, **(airframe or {}))
+    kw = dict(AIRFRAME, **(uc.airframe or {}), **(airframe or {}))
     scn = cl.Scenario(uc.name, uc.path, duration_s=uc.duration, class_id=uc.class_id,
                       target_h=uc.h, target_w=uc.w, flight_cap=flight_cap, gimbal=gimbal, **kw)
     scn = dataclasses.replace(scn, start=uc.start or (0.0, 0.0, alt, 0.0))
