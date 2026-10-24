@@ -58,6 +58,15 @@ class CommandState:
             self.yaw *= factor
             self._stamp = time.monotonic()
 
+    def decay_split(self, vx_factor: float, other_factor: float):
+        """Decay forward speed and (vertical, yaw) separately: coast forward through a short dropout
+        while the turn/climb commands die away."""
+        with self._lock:
+            self.vx  *= vx_factor
+            self.vz  *= other_factor
+            self.yaw *= other_factor
+            self._stamp = time.monotonic()
+
     def read(self) -> tuple:
         with self._lock:
             return self.vx, self.vz, self.yaw

@@ -137,3 +137,46 @@ def test_highway_cases_run_longer_than_a_minute_after_settling():
     for key in ("highway sprinter 10", "highway car 20"):
         uc = next(x for x in u.USE_CASES if key in x.name)
         assert uc.duration - 15.0 >= 60.0
+
+
+# ---- root cause of the first highway Gazebo run: detector dropout bursts ----
+def _with_coast(coast):
+    import copy
+    c = copy.deepcopy(CFG)
+    for p in c['profiles'].values():
+        p['tracking'] = {'coast_hold_s': coast}
+    return c
+
+
+def test_dropout_bursts_lose_the_car_unless_forward_speed_is_held():
+    uc = next(x for x in u.USE_CASES if x.name == "highway car 20 m/s")
+    bad = u.evaluate(uc, _with_coast(0.0), airframe=dict(burst_prob=0.01, burst_frames=8))
+    good = u.evaluate(uc, CFG, airframe=dict(burst_prob=0.01, burst_frames=8))
+    assert u.verdict(bad) == "FAIL" and bad['visible'] < 0.8      # the symptom you saw: lock lost, rocking
+    assert u.verdict(good) == "PASS"
+
+
+def test_profile_coast_values_are_bounded_and_vehicle_stays_short():
+    for name, p in CFG['profiles'].items():
+        assert 0.0 <= p['tracking']['coast_hold_s'] <= 1.0, name
+    assert CFG['profiles']['vehicle']['tracking']['coast_hold_s'] <= 0.25    # longer coasting loses lane changes
+
+
+def test_coast_decays_yaw_and_climb_but_holds_forward_speed():
+    from tracker_state import CommandState
+    c = CommandState()
+    c.update(10.0, 1.0, 0.5)
+    c.decay_split(1.0, 0.5)
+    assert c.read() == (10.0, 0.5, 0.25)
+
+
+def test_fast_profiles_use_steadier_command_smoothing():
+    for name in ("runner", "vehicle", "motorcycle", "highway_runner", "highway"):
+        assert CFG['profiles'][name]['pid']['smooth_alpha'] >= 0.6
+    assert 'smooth_alpha' not in CFG['profiles']['pedestrian']['pid']
+
+
+def test_default_config_keeps_original_behaviour_switches():
+    assert CFG['tracking']['coast_hold_s'] == 0.0
+    assert CFG['pid']['smooth_alpha'] == 0.4
+    assert CFG['tracking']['reid']['enabled'] is True

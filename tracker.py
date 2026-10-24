@@ -41,6 +41,7 @@ from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
 from profiles        import apply_profile
 from class_vote      import ClassVote
+from reid            import ReID
 from fc_interface5   import FCInterface
 from gcs_server      import GCSServer
 from mouse_lock      import MouseLocker
@@ -511,6 +512,13 @@ def main():
     class_colors   = {int(k): v for k, v in cfg['classes']['colors'].items()}
     max_lost       = cfg['tracking']['max_lost_frames']
     half_life      = cfg['tracking'].get('lost_decay_half_life_s', 0.15)
+    reid           = ReID(cfg['tracking'].get('reid'), fw, fh, class_groups)
+    coast_hold     = max(0.0, min(1.5, float(cfg['tracking'].get('coast_hold_s', 0.0))))
+    # with re-ID on, keep the lock slot open long enough to search (timeout_s) before giving up
+    # (frames; recomputed each frame from the measured frame rate so it really is `timeout_s` seconds)
+    lost_limit     = max_lost
+    lost_t0        = None
+    reid_note      = ""
 
     run_cfg = cfg.get('run_log', {})
     run_log = RunLogger(run_cfg.get('dir', 'logs/runs'), run_cfg.get('enabled', True))
@@ -608,6 +616,7 @@ def main():
 
             # ---- detection + tracking ------------------------------------
             active_classes = class_groups.get(rc_filter, class_groups['any'])
+            t_inf = time.monotonic()
             try:
                 results = model.track(
                     frame, persist=True, verbose=False,
@@ -619,6 +628,7 @@ def main():
                 state.errors.record('inference', e)
                 results = None
 
+            det_ms = (time.monotonic() - t_inf) * 1000.0
             tracks = []
             if results and results[0].boxes.id is not None:
                 boxes   = results[0].boxes.xyxy.cpu().numpy()
@@ -631,9 +641,16 @@ def main():
                     tracks.append(entry)
                     state.last_boxes[int(ids[i])] = entry
 
+            reid.observe_frame(tracks, now)
+            if reid.enabled:
+                lost_limit = max(max_lost, int(reid.timeout_s * max(fps, 15.0)) + 1)
+            tm = fc.get_telemetry() if fc is not None else {}
+            hdg = math.radians(tm.get('heading', 0))
+            v_fwd = tm.get('vx', 0.0) * math.cos(hdg) + tm.get('vy', 0.0) * math.sin(hdg)
+
             # Every frame, including empty ones, so a vanished target is counted.
             state.update_lost_frames(active_ids={int(t[4]) for t in tracks},
-                                     max_lost=max_lost, pid=pid)
+                                     max_lost=lost_limit, pid=pid)
 
             # ---- safety gate -----------------------------------------------
             decision   = state.safety
@@ -673,14 +690,23 @@ def main():
 
             # ---- control ---------------------------------------------------
             locked_box, locked_cls = None, None
+            reid_note = ""
             if state.locked_id is not None and not suppressed:
                 lt = next((t for t in tracks if int(t[4]) == state.locked_id), None)
+                if lt is None and reid.enabled:
+                    cand = reid.propose(frame, tracks, now)
+                    if cand is not None:
+                        log.info("[REID] re-locked: %s", reid.last_event)
+                        state.locked_id = int(cand[4])
+                        state.lost_frames[state.locked_id] = 0
+                        class_vote.rekey(state.locked_id)
+                        reid_note = "relocked"
+                        lt = cand
                 if lt is not None:
+                    lost_t0 = None
                     locked_box = (int(lt[0]), int(lt[1]), int(lt[2]), int(lt[3]))
                     locked_cls = class_vote.update(state.locked_id, int(lt[6]))
-                    tm = fc.get_telemetry() if fc is not None else {}
-                    hdg = math.radians(tm.get('heading', 0))
-                    v_fwd = tm.get('vx', 0.0) * math.cos(hdg) + tm.get('vy', 0.0) * math.sin(hdg)
+                    reid.remember(frame, lt, now)
                     vx, vz, yaw = pid.compute(
                         locked_box, fw, fh, class_id=locked_cls,
                         tilt_rad=0.0 if gimbal else tm.get('tilt_rad', 0.0),
@@ -688,10 +714,20 @@ def main():
                         v_drone_fwd=v_fwd)
                     state.cmd.update(vx, vz, yaw)
                 else:
-                    state.cmd.decay(0.5 ** (dt / half_life))   # time-based decay
+                    if lost_t0 is None:
+                        lost_t0 = now
+                    if reid.enabled:
+                        reid_note = "search"
+                    if now - lost_t0 < coast_hold:
+                        # coast: keep forward speed through a short dropout, let yaw/climb die away
+                        state.cmd.decay_split(1.0, 0.5 ** (dt / half_life))
+                    else:
+                        state.cmd.decay(0.5 ** (dt / half_life))   # time-based decay
             else:
                 state.cmd.zero()
                 pid.reset()
+                reid.reset()
+                lost_t0 = None
 
             # ---- draw ------------------------------------------------------
             frame, drawn_box = draw_tracks(frame, tracks, state.locked_id,
@@ -718,7 +754,10 @@ def main():
                 cmd_vx=round(cvx, 3), cmd_vz=round(cvz, 3), cmd_yaw=round(cyaw, 3),
                 safety_action=decision.action if decision else "NONE",
                 safety_reason=decision.reason if decision else "",
-                errors=state.errors.total())
+                errors=state.errors.total(),
+                gs=round(math.hypot(tm.get('vx', 0.0), tm.get('vy', 0.0)), 2), v_fwd=round(v_fwd, 2),
+                tilt_deg=round(math.degrees(tm.get('tilt_rad', 0.0)), 1), det_ms=round(det_ms, 1),
+                reid=reid_note)
 
             # ---- display + keys ----------------------------------------------
             gcs.update_frame(frame)

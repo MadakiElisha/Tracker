@@ -30,6 +30,9 @@ def main():
     ap.add_argument("--runner-accel", type=float, default=3.0, help="m/s^2 (default 3.0)")
     ap.add_argument("--start-delay", type=float, default=20.0,
                     help="seconds the targets stand still before moving (default 20: take off and lock first)")
+    ap.add_argument("--manual-start", action="store_true",
+                    help="wait for Enter before the targets move: take off, lock the target, then press Enter "
+                         "(tests the chase on its own, not the acquisition)")
     ap.add_argument("--lane-changes", type=float, default=0.0, metavar="SECONDS",
                     help="car changes lane every SECONDS seconds (default 0 = never)")
     ap.add_argument("--rate", type=float, default=30.0, help="pose updates per second (default 30)")
@@ -54,6 +57,14 @@ def main():
         actors.append(("highway_runner", args.runner_speed, args.runner_accel, RUNNER_Y, args.runner_yaw_offset, 0.0))
     print(f"[HIGHWAY] {', '.join(f'{n} {v:.1f} m/s' for n, v, *_ in actors)}; start in {args.start_delay:.0f} s; Ctrl+C stops")
 
+    if args.manual_start:
+        args.start_delay = 0.0
+        print("[HIGHWAY] Targets are standing still. Take off, lock the target in the tracker, then press Enter here.")
+        try:
+            input()
+        except (EOFError, KeyboardInterrupt):
+            return 0
+        print("[HIGHWAY] GO")
     interval = 1.0 / max(1.0, args.rate)
     t0 = time.monotonic()
     failures = 0

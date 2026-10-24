@@ -120,7 +120,9 @@ USE_CASES = [
             airframe=AIRFRAMES["quad_10_15in"], note="2 km road", **{**CAR, "profile": "highway"}),
 ]
 
-AIRFRAME = dict(max_speed=20.0, max_accel=5.0, tilt_coupling=True, tilt_comp=True, tau_v=0.5, latency_frames=3,
+AIRFRAME = dict(max_speed=20.0, max_accel=5.0, tilt_coupling=True, tilt_comp=True, tau_v=0.5,
+                latency_frames=5,                     # ~0.17 s camera + detector + link delay at 30 fps
+                burst_prob=0.01, burst_frames=8,      # detector dropouts arrive in ~0.27 s bursts in the real sim
                 fps=30.0, pixel_noise=2.0, dropout=0.02, seed=1)
 
 
@@ -129,13 +131,16 @@ def evaluate(uc: UseCase, cfg: dict, gimbal=None, airframe=None, extra=None):
     from profiles import apply_profile
     c = apply_profile(cfg, uc.profile)
     pid_cfg = c['pid']
+    coast = float(c.get('tracking', {}).get('coast_hold_s', 0.0))
+    half_life = float(c.get('tracking', {}).get('lost_decay_half_life_s', 0.15))
     flight_cap = c['flight']['max_forward_speed']
     alt = c['flight'].get('target_altitude', 10.0)
     if gimbal is None:
         gimbal = bool(c.get('camera', {}).get('gimbal', False))
-    kw = dict(AIRFRAME, **(uc.airframe or {}), **(airframe or {}))
+    kw = {**AIRFRAME, **(uc.airframe or {}), **(airframe or {})}
     scn = cl.Scenario(uc.name, uc.path, duration_s=uc.duration, class_id=uc.class_id,
-                      target_h=uc.h, target_w=uc.w, flight_cap=flight_cap, gimbal=gimbal, **kw)
+                      target_h=uc.h, target_w=uc.w, flight_cap=flight_cap, gimbal=gimbal,
+                      coast_hold_s=coast, lost_half_life_s=half_life, **kw)
     scn = dataclasses.replace(scn, start=uc.start or (0.0, 0.0, alt, 0.0))
     if extra:
         scn = dataclasses.replace(scn, **extra)
@@ -146,7 +151,11 @@ def evaluate(uc: UseCase, cfg: dict, gimbal=None, airframe=None, extra=None):
     vis = [i for i in idx if res.visible[i]]
     within = sum(1 for i in vis if abs(res.range_err[i]) <= 0.20) / n
     re_ = sorted(abs(res.range_err[i]) for i in vis)
-    return dict(visible=len(vis) / n, within20=within,
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts'))
+    import pursuit_report as pr
+    cmds = [res.cmd_vx[i] for i in idx]
+    swings = pr.reversals(cmds, min_swing=2.0) / max(len(idx) / scn.fps, 1.0) * 10.0
+    return dict(visible=len(vis) / n, within20=within, swings=swings,
                 med_re=re_[len(re_) // 2] if re_ else float('nan'),
                 max_speed=max(res.speed), max_tilt=max(abs(x) for x in res.tilt_deg),
                 final_dist=res.dist[-1])

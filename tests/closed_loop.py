@@ -57,6 +57,11 @@ class Scenario:
     drag_tilt_deg_per_ms: float = 1.2   # steady-speed lean from drag, degrees per m/s
     tilt_comp: bool = False          # pass measured body tilt to the controller (tilt compensation)
     flight_cap: float = 1e9          # speed cap applied on the command (like flight.max_forward_speed)
+    # detector dropouts arrive in bursts in the real sim; `dropout` alone is single-frame
+    burst_prob: float = 0.0          # chance per frame that a dropout burst starts
+    burst_frames: int = 0            # length of each burst (frames)
+    coast_hold_s: float = 0.0        # keep the last command this long when the target is unseen (tracker.coast_hold_s)
+    lost_half_life_s: float = 0.15   # then decay with this half-life (tracking.lost_decay_half_life_s)
 
 
 @dataclass
@@ -128,6 +133,8 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
     pitch_hist: List[float] = []
     tilt_hist: List[float] = []
     tilt = 0.0
+    burst_left = 0
+    unseen_s = 0.0
     res = Result()
     sp = pid.setpoint_for(scn.class_id)
 
@@ -143,16 +150,25 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
         lag = max(0, len(hist) - 1 - scn.latency_frames)
         sx, sy, sz, spsi, stx, sty = hist[lag]
         box = None
-        if rng.random() >= scn.dropout:
+        if burst_left > 0:
+            burst_left -= 1
+        elif scn.burst_prob > 0 and rng.random() < scn.burst_prob:
+            burst_left = scn.burst_frames
+        if burst_left == 0 and rng.random() >= scn.dropout:
             box = bbox((sx, sy, sz), spsi, pitch_hist[lag], stx, sty,
                        scn.target_h, scn.target_w, rng, scn.pixel_noise)
         if box is not None:
+            unseen_s = 0.0
             cmd = pid.compute(box, W, H, class_id=scn.class_id,
                               tilt_rad=(0.0 if (scn.gimbal or not scn.tilt_comp) else tilt_hist[lag]),
                               alt_m=sz, v_drone_fwd=vx)
         else:
-            f = 0.5 ** (dt / 0.15)                      # same time-based decay as tracker.py
-            cmd = (cmd[0] * f, cmd[1] * f, cmd[2] * f)
+            unseen_s += dt
+            f = 0.5 ** (dt / scn.lost_half_life_s)      # same coast-then-decay policy as tracker.py
+            if unseen_s > scn.coast_hold_s:
+                cmd = (cmd[0] * f, cmd[1] * f, cmd[2] * f)
+            else:                                       # coast: forward speed held, yaw/climb decay
+                cmd = (cmd[0], cmd[1] * f, cmd[2] * f)
         cvx, cvz, cyaw = cmd
         cvx = max(-scn.flight_cap, min(scn.flight_cap, cvx))
         cvz = limit_vertical(cvz, z, scn.min_alt, scn.max_alt)

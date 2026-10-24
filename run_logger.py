@@ -16,6 +16,7 @@ FIELDS = [
     "err_x", "err_y", "area", "setpoint",
     "cmd_vx", "cmd_vz", "cmd_yaw",
     "safety_action", "safety_reason", "errors",
+    "gs", "v_fwd", "tilt_deg", "det_ms", "reid",      # ground speed, forward speed, lean, detector ms, re-ID state
 ]
 
 

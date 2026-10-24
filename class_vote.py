@@ -26,3 +26,7 @@ class ClassVote:
         if self._cur is None or counts.get(self._cur, 0) < best:
             self._cur = next(c for c in reversed(self._obs) if counts[c] == best)
         return self._cur
+
+    def rekey(self, new_id):
+        """Carry the vote over when the lock moves to a re-identified track."""
+        self._id = new_id

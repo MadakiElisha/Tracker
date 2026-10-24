@@ -134,3 +134,80 @@ def test_refuses_to_start_without_fc_unless_no_fly(env):
     out, _ = p.communicate(timeout=60)
     assert p.returncode == 1
     assert "refusing to start" in out
+
+
+FAKE_SWAP = textwrap.dedent('''
+    import os, time
+    import numpy as np
+    FLAG = os.environ["SWAP_FLAG"]
+    _t0 = [None]
+    class _T:
+        def __init__(self, a): self.a = a
+        def cpu(self): return self
+        def numpy(self): return self.a
+    class _Boxes:
+        def __init__(self, tid):
+            self.id   = _T(np.array([float(tid)])) if tid else None
+            self.xyxy = _T(np.array([[270.0, 165.0, 370.0, 315.0]]))
+            self.conf = _T(np.array([0.9]))
+            self.cls  = _T(np.array([0.0]))
+    class _R:
+        def __init__(self, tid): self.boxes = _Boxes(tid)
+    class YOLO:
+        def __init__(self, path): pass
+        def track(self, frame, **kw):
+            if os.path.exists(FLAG):
+                _t0[0] = _t0[0] or time.monotonic()
+                age = time.monotonic() - _t0[0]
+                if age < 0.5:
+                    return [_R(None)]            # detector drops the target for 0.5 s ...
+                return [_R(7)]                   # ... and ByteTrack comes back with a NEW id
+            return [_R(1)]
+''')
+
+
+def test_reid_relocks_after_track_id_change(env):
+    tmp, cfg, cfgp, e = env
+    (tmp / "stub" / "ultralytics" / "__init__.py").write_text(FAKE_SWAP)
+    flag = tmp / "swap.flag"
+    e = dict(e, SWAP_FLAG=str(flag))
+    # the synthetic video's patch moves relative to the fixed stub box, so colour match is not meaningful
+    # here; appearance scoring is covered by tests/test_reid.py. This test proves the wiring.
+    cfg['tracking']['reid'] = {'min_appearance': 0.0, 'threshold': 0.4}
+    cfgp.write_text(yaml.safe_dump(cfg))
+    p = start(cfgp, e)
+    try:
+        post_tap(cfg['gcs']['port'], 320, 240)
+        time.sleep(1.5)
+        flag.write_text("go")
+        time.sleep(3.0)
+    finally:
+        p.send_signal(signal.SIGINT)
+        out, _ = p.communicate(timeout=20)
+    assert p.returncode == 0 and "Traceback" not in out, out[-2000:]
+    assert "[REID] re-locked" in out and "id 1->7" in out, out[-2000:]
+    rows = list(csv.DictReader(open(next((tmp / "runs").glob("run_*.csv")))))
+    assert any(r["reid"] == "search" for r in rows) and any(r["reid"] == "relocked" for r in rows)
+    assert rows[-1]["locked_id"] == "7" and rows[-1]["target_visible"] == "1"
+
+
+def test_reid_can_be_disabled(env):
+    tmp, cfg, cfgp, e = env
+    cfg['tracking']['reid'] = {'enabled': False}
+    cfg['tracking']['max_lost_frames'] = 5
+    cfgp.write_text(yaml.safe_dump(cfg))
+    (tmp / "stub" / "ultralytics" / "__init__.py").write_text(FAKE_SWAP)
+    flag = tmp / "swap.flag"
+    e = dict(e, SWAP_FLAG=str(flag))
+    p = start(cfgp, e)
+    try:
+        post_tap(cfg['gcs']['port'], 320, 240)
+        time.sleep(1.5)
+        flag.write_text("go")
+        time.sleep(3.0)
+    finally:
+        p.send_signal(signal.SIGINT)
+        out, _ = p.communicate(timeout=20)
+    assert "[REID]" not in out
+    rows = list(csv.DictReader(open(next((tmp / "runs").glob("run_*.csv")))))
+    assert rows[-1]["locked_id"] == ""            # old behaviour: lock dropped, nothing re-acquired

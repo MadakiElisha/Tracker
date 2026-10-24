@@ -51,6 +51,11 @@ tracking:
   tracker_config: "bytetrack.yaml"
   lost_decay_half_life_s: 0.15 # commands halve every 0.15 s while the locked target is unseen
   reid_warn_threshold: 0.60    # conf below this triggers [RE-ID?] warning
+  coast_hold_s: 0.0            # keep the last command this long when the target is briefly unseen (0 = decay at once)
+  reid:                        # pick the target back up under a new track id (appearance + position + size)
+    enabled: true
+    timeout_s: 6.0             # search this long before releasing the lock
+    confirm_frames: 3
   class_vote_frames: 60        # setpoint class = most common class on this lock over N frames (stops car/van/truck flips)
 
 # --- PID Controller ---
@@ -186,6 +191,7 @@ camera:
 profiles:
   pedestrian:                  # walking / jogging, up to ~4 m/s; fixed camera is acceptable
     flight: {max_forward_speed: 4.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.3}
     pid:
       pitch: {kp: 4.0, ki: 0.2, kd: 0.1, i_limit_frac: 0.8, output_limit: 4.0}
       reverse_limit: 2.0
@@ -195,7 +201,9 @@ profiles:
   runner:                      # sprinter / cyclist, up to ~10 m/s
     camera: {gimbal: false}
     flight: {max_forward_speed: 10.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.4}
     pid:
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 10.0}
       reverse_limit: 3.0
       z: {mode: altitude, target_altitude: 6.0}
@@ -204,7 +212,9 @@ profiles:
   vehicle:                     # cars / vans / trucks / buses, up to ~16 m/s
     camera: {gimbal: false}
     flight: {max_forward_speed: 16.0, target_altitude: 10.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 0.2}
     pid:
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
       reverse_limit: 4.0
       z: {mode: altitude, target_altitude: 10.0}
@@ -213,7 +223,9 @@ profiles:
   motorcycle:                  # motorbikes / scooters / cyclists, up to ~20 m/s
     camera: {gimbal: false}
     flight: {max_forward_speed: 20.0, target_altitude: 8.0}
+    tracking: {coast_hold_s: 0.4}
     pid:
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 20.0}
       reverse_limit: 4.0
       z: {mode: altitude, target_altitude: 8.0}
@@ -222,7 +234,9 @@ profiles:
   highway_runner:              # sprinter on a long straight, up to ~10 m/s (cap must exceed target speed to close the gap)
     camera: {gimbal: false}
     flight: {max_forward_speed: 14.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.6}
     pid:
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 14.0}
       reverse_limit: 3.0
       z: {mode: altitude, target_altitude: 6.0}
@@ -231,7 +245,9 @@ profiles:
   highway:                     # car on a highway, up to ~20 m/s; needs SITL params sim/params/ardupilot_fast.param
     camera: {gimbal: false}
     flight: {max_forward_speed: 24.0, target_altitude: 8.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 0.6}
     pid:
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 24.0}
       reverse_limit: 4.0
       z: {mode: altitude, target_altitude: 8.0}

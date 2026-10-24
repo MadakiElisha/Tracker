@@ -74,8 +74,8 @@ unchanged, and `sim/launch_sim.sh ardupilot` still starts exactly what it did be
 ### Run it (stock Iris first)
 
 Terminal 1: `cd ~/Tracker && sim/launch_sim.sh ardupilot highway`
-Terminal 2: `python3 sim/move_highway.py --target car --car-speed 20 --start-delay 30`
-Terminal 3: `python3 tracker.py --source gz:/drone/camera --profile highway`  (press T, then click the car within 30 s)
+Terminal 2: `python3 sim/move_highway.py --target car --car-speed 20 --manual-start`  (car waits; press Enter after you lock it)
+Terminal 3: `python3 tracker.py --source gz:/drone/camera --profile highway`  (press T, click the car, then press Enter in terminal 2)
 
 The targets stand still for `--start-delay` seconds so you can take off and lock. Runner:
 `--target runner --runner-speed 10`, tracker `--profile highway_runner`.
@@ -109,3 +109,46 @@ the same car case fails (target lost), so **keep `WPNAV_ACCEL` at 600**.
 **Not validated:** none of the highway files has been run in Gazebo yet. The thrust scaling in
 `make_fast_quad.py` is the least certain part. The 10-15 inch airframe numbers are assumptions; send real
 mass, motor and prop data to replace them. No obstacle avoidance; one lane-change option only.
+
+## Highway run 1 findings and fixes (car lost, no re-acquisition, rocking)
+
+**Symptoms (Gazebo):** at 20 m/s the lock lasted a few seconds and was never recovered; the 8 m/s runner
+worked but the drone rocked back and forth.
+
+**Reproduced offline.** The model only had single-frame detector misses. Real detectors drop targets in
+*bursts* (about 0.3 s). Adding bursts reproduces both symptoms: the 20 m/s car case falls from PASS to
+24% visible, and the speed command swings 4-5x more often. Cause: when the target vanished, the forward
+command decayed with a 0.15 s half-life, so the drone braked, the car pulled away, and the next frame
+asked for full speed again.
+
+**Fixes (all covered by tests):**
+1. **Coast through short dropouts** (`tracking.coast_hold_s`, per profile): forward speed is held for up to
+   0.2-0.6 s while yaw and climb decay as before. Vehicle profile stays at 0.2 s because longer coasting
+   loses cars during lane changes. 20 m/s car with bursts: 24% -> 98% visible.
+2. **Re-ID** (`reid.py`, `tracking.reid`): when ByteTrack hands the target a new id, the lock moves to the
+   new track if it matches on colour, position (search area widens with time) and size, beats the runner-up
+   clearly and holds for 3 frames. It never re-locks to a track that already existed while the target was
+   visible, and gives up after `reid.timeout_s` (6 s) by releasing the lock as before. Disable with
+   `tracking.reid.enabled: false`.
+3. **Steadier speed command** for the fast profiles (`smooth_alpha` 0.6): speed-command swings in the
+   model drop from 4-8 per 10 s to about 0 on the runner and highway cases.
+4. Run log now also records `gs`, `v_fwd`, `tilt_deg`, `det_ms`, `reid`.
+
+The model now uses 5 frames (0.17 s) of delay plus dropout bursts for every case: 12 of 14 pass on 4
+noise seeds (stop-and-go and the 28 m/s car are the two that do not).
+
+**Not proven:** whether your Gazebo drone actually reaches the commanded speed. Check that first:
+
+```
+python3 scripts/check_sim_limits.py        # while sim/launch_sim.sh ... highway is running
+python3 sim/move_highway.py --target car --car-speed 20 --manual-start    # car waits until you press Enter
+python3 tracker.py --source gz:/drone/camera --profile highway             # T, click the car, then Enter in the mover
+python3 scripts/pursuit_report.py logs/runs/$(ls -t logs/runs | head -1)
+```
+
+`check_sim_limits.py` prints FAIL if the SITL speed limit is still 5 m/s. `pursuit_report.py` shows
+ground speed vs commanded speed, dropout bursts, rocking and re-ID events for the run.
+
+**Gimbal.** There is no gimbal drone in the sim. The model says a gimbal adds margin at 20 m/s but is not
+what caused these symptoms, so it is not the first fix. ArduPilot's Gazebo repo has an
+`iris_with_gimbal` model; it can be added later if a fixed camera still fails after these changes.
