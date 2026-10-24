@@ -178,9 +178,15 @@ class TrackerPID:
         self.gate_y = (g.get('y_start', 0.25), g.get('y_full', 0.45))
         self.smooth_alpha = cfg.get('smooth_alpha', 0.4)
         self.camera_hfov_deg = float(cfg.get('camera_hfov_deg', 90.0))
+        tc = cfg.get('tilt', {}) or {}
+        self.tilt_vertical = bool(tc.get('vertical', True))      # tilt-correct the vertical error / forward gate
+        self.tilt_estimator = bool(tc.get('estimator', True))    # tilt-correct the target-speed estimator
         ff = cfg.get('feedforward', {}) or {}
         self.ff_enabled = bool(ff.get('enabled', False))
         self.ff_gain = float(ff.get('gain', 1.0))
+        lc = cfg.get('latency_comp', {}) or {}
+        self.latency_comp_s = float(lc.get('seconds', 0.0))      # 0 = off (original behaviour)
+        self.latency_comp_max = float(lc.get('max_shift', 0.5))  # cap on the range-error shift
         self.estimator = None
         if self.ff_enabled:
             from target_estimator import TargetMotionEstimator
@@ -221,6 +227,21 @@ class TrackerPID:
         a = max(current_area, 1e-6)
         return min(math.sqrt(sp / a) - 1.0, self.max_range_error)
 
+    def _predict_range_error(self, err: float, alt_m: float) -> float:
+        """Smith-style delay compensation: the frame is `latency_comp_s` old, so the gap has already changed
+        by (closing rate x delay). Shift the measured relative range error to where it is likely to be NOW.
+        Uses the estimator's range and range-rate; does nothing until the estimate is trustworthy."""
+        est = self.estimator
+        if est is None or est.last_D is None or est.v_sigma > est.max_vel_sigma:
+            return err
+        R = math.hypot(est.last_D, alt_m)
+        if R < 1.0:
+            return err
+        v_slant = est.v_rel * est.last_D / R                       # + = target pulling away
+        shift = (1.0 + err) * v_slant * self.latency_comp_s / R
+        shift = max(-self.latency_comp_max, min(self.latency_comp_max, shift))
+        return min(err + shift, self.max_range_error)
+
     def compute(self, target_box, frame_w: int, frame_h: int,
                 class_id: Optional[int] = None, tilt_rad: float = 0.0,
                 alt_m: Optional[float] = None, v_drone_fwd: float = 0.0):
@@ -241,7 +262,7 @@ class TrackerPID:
         current_area = (bw * bh) / (frame_w * frame_h)
 
         error_y_ctrl = error_y
-        if tilt_rad:
+        if tilt_rad and self.tilt_vertical:
             f_px = (frame_w / 2.0) / math.tan(math.radians(self.camera_hfov_deg) / 2.0)
             ang = math.atan(error_y * frame_h / f_px) + tilt_rad      # angle below the camera axis, nominal frame
             error_y_ctrl = f_px * math.tan(max(-1.4, min(1.4, ang))) / frame_h
@@ -259,10 +280,15 @@ class TrackerPID:
                                                 alt_term + self.z_pid.compute(excess)))
         else:
             raw_vz = self.z_pid.compute(error_y_ctrl)
-        raw_vx  = self.pitch_pid.compute(self.distance_error(current_area, class_id))
+        v_t = 0.0
         if self.estimator is not None:
             v_t = self.estimator.update(self._clock_fn(), target_box, frame_w, frame_h,
-                                        alt_m, tilt_rad, v_drone_fwd)
+                                        alt_m, tilt_rad if self.tilt_estimator else 0.0, v_drone_fwd)
+        dist_err = self.distance_error(current_area, class_id)
+        if self.latency_comp_s > 0.0 and self.estimator is not None and alt_m:
+            dist_err = self._predict_range_error(dist_err, alt_m)
+        raw_vx  = self.pitch_pid.compute(dist_err)
+        if self.estimator is not None:
             lim = self.pitch_pid.output_limit
             raw_vx = max(-lim, min(lim, raw_vx + self.ff_gain * v_t))
         if self.gate_enabled and raw_vx > 0.0:      # only gate approaching, never retreat

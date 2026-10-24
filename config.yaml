@@ -179,6 +179,7 @@ run_log:
 camera:
   hfov_deg: 90.0               # must match the camera (sim: 90; see sim/add_camera_to_iris.py)
   pitch_deg: 20.0              # mount pitch below the horizon
+  sync_lag_s: 0.06             # frame age minus telemetry age: tilt/altitude are looked up at (now - this); tune if the chase rocks
   gimbal: false                # true = camera is stabilised against body tilt (recommended above ~10 m/s)
 
 # --- Mission profiles (python3 tracker.py --profile NAME) ---
@@ -203,6 +204,7 @@ profiles:
     flight: {max_forward_speed: 10.0, target_altitude: 6.0}
     tracking: {coast_hold_s: 0.4}
     pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
       smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 10.0}
       reverse_limit: 3.0
@@ -214,6 +216,7 @@ profiles:
     flight: {max_forward_speed: 16.0, target_altitude: 10.0, max_altitude: 40.0}
     tracking: {coast_hold_s: 0.2}
     pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
       smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
       reverse_limit: 4.0
@@ -225,6 +228,7 @@ profiles:
     flight: {max_forward_speed: 20.0, target_altitude: 8.0}
     tracking: {coast_hold_s: 0.4}
     pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
       smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 20.0}
       reverse_limit: 4.0
@@ -236,6 +240,7 @@ profiles:
     flight: {max_forward_speed: 14.0, target_altitude: 6.0}
     tracking: {coast_hold_s: 0.6}
     pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
       smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 14.0}
       reverse_limit: 3.0
@@ -247,6 +252,7 @@ profiles:
     flight: {max_forward_speed: 24.0, target_altitude: 8.0, max_altitude: 40.0}
     tracking: {coast_hold_s: 0.6}
     pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
       smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 24.0}
       reverse_limit: 4.0

@@ -150,9 +150,10 @@ def _with_coast(coast):
 
 def test_dropout_bursts_lose_the_car_unless_forward_speed_is_held():
     uc = next(x for x in u.USE_CASES if x.name == "highway car 20 m/s")
-    bad = u.evaluate(uc, _with_coast(0.0), airframe=dict(burst_prob=0.01, burst_frames=8))
-    good = u.evaluate(uc, CFG, airframe=dict(burst_prob=0.01, burst_frames=8))
-    assert u.verdict(bad) == "FAIL" and bad['visible'] < 0.8      # the symptom you saw: lock lost, rocking
+    air = dict(burst_prob=0.01, burst_frames=8, seed=3)
+    bad = u.evaluate(uc, _with_coast(0.0), airframe=air)
+    good = u.evaluate(uc, CFG, airframe=air)
+    assert u.verdict(bad) == "FAIL" and bad['visible'] < 0.5      # the symptom you saw: lock lost
     assert u.verdict(good) == "PASS"
 
 
@@ -180,3 +181,34 @@ def test_default_config_keeps_original_behaviour_switches():
     assert CFG['tracking']['coast_hold_s'] == 0.0
     assert CFG['pid']['smooth_alpha'] == 0.4
     assert CFG['tracking']['reid']['enabled'] is True
+
+
+# ---- frame/telemetry time sync and delay compensation (second highway run) ----
+def test_fast_chase_depends_on_tilt_being_matched_to_frame_time():
+    """Documents WHY camera.sync_lag_s must be calibrated (scripts/calibrate_sync.py): an error of two
+    frames (~0.1 s) in which lean is applied to the image breaks the sprinter chase outright."""
+    uc = next(x for x in u.USE_CASES if x.name == "highway sprinter 10 m/s")
+    assert u.verdict(u.evaluate(uc, CFG, extra=dict(tilt_lag_error_frames=0))) == "PASS"
+    assert u.verdict(u.evaluate(uc, CFG, extra=dict(tilt_lag_error_frames=2))) == "FAIL"
+    assert u.verdict(u.evaluate(uc, CFG, extra=dict(tilt_sync=False))) == "FAIL"     # latest lean, not frame-time lean
+
+
+def test_latency_comp_is_off_by_default_and_on_for_fast_profiles():
+    assert 'latency_comp' not in CFG['pid']
+    for name in ("runner", "vehicle", "motorcycle", "highway_runner", "highway"):
+        assert CFG['profiles'][name]['pid']['latency_comp']['seconds'] > 0
+    assert CFG['camera']['sync_lag_s'] > 0
+
+
+def test_range_error_prediction_shifts_toward_far_when_target_pulls_away():
+    cfgp = dict(CFG['pid'], latency_comp={'seconds': 0.3}, feedforward={'enabled': True})
+    pid = TrackerPID.from_config(cfgp)
+    est = pid.estimator
+    est.last_D, est.v_rel, est.v_sigma = 20.0, 6.0, 0.5          # target 20 m away, opening at 6 m/s
+    assert pid._predict_range_error(0.10, 8.0) > 0.10
+    est.v_rel = -6.0                                              # closing: predicts a smaller error
+    assert pid._predict_range_error(0.10, 8.0) < 0.10
+    est.v_sigma = 5.0                                             # untrusted estimate: unchanged
+    assert pid._predict_range_error(0.10, 8.0) == 0.10
+    off = TrackerPID.from_config(CFG['pid'])
+    assert off.latency_comp_s == 0.0

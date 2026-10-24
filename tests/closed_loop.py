@@ -60,6 +60,8 @@ class Scenario:
     # detector dropouts arrive in bursts in the real sim; `dropout` alone is single-frame
     burst_prob: float = 0.0          # chance per frame that a dropout burst starts
     burst_frames: int = 0            # length of each burst (frames)
+    tilt_lag_error_frames: int = 0   # tilt looked up this many frames off the true capture time (sync_lag_s mis-set)
+    tilt_sync: bool = True           # False: controller sees the CURRENT tilt, not the tilt at frame capture (as on the real drone)
     coast_hold_s: float = 0.0        # keep the last command this long when the target is unseen (tracker.coast_hold_s)
     lost_half_life_s: float = 0.15   # then decay with this half-life (tracking.lost_decay_half_life_s)
 
@@ -160,7 +162,7 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
         if box is not None:
             unseen_s = 0.0
             cmd = pid.compute(box, W, H, class_id=scn.class_id,
-                              tilt_rad=(0.0 if (scn.gimbal or not scn.tilt_comp) else tilt_hist[lag]),
+                              tilt_rad=(0.0 if (scn.gimbal or not scn.tilt_comp) else (tilt_hist[max(0, min(len(tilt_hist) - 1, lag - scn.tilt_lag_error_frames))] if scn.tilt_sync else tilt)),
                               alt_m=sz, v_drone_fwd=vx)
         else:
             unseen_s += dt

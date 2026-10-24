@@ -16,7 +16,8 @@ FIELDS = [
     "err_x", "err_y", "area", "setpoint",
     "cmd_vx", "cmd_vz", "cmd_yaw",
     "safety_action", "safety_reason", "errors",
-    "gs", "v_fwd", "tilt_deg", "det_ms", "reid",      # ground speed, forward speed, lean, detector ms, re-ID state
+    "gs", "v_fwd", "tilt_deg", "det_ms", "reid",
+    "t_read", "tilt_now_deg",    # frame-read time (s) and the UNSYNCED latest lean: input of scripts/calibrate_sync.py      # ground speed, forward speed, lean, detector ms, re-ID state
 ]
 
 

@@ -504,6 +504,7 @@ def main():
     pid_cfg.setdefault('camera_hfov_deg', cam.get('hfov_deg', 90.0))
     pid_cfg.setdefault('camera_pitch_deg', cam.get('pitch_deg', 20.0))
     gimbal = bool(cam.get('gimbal', False))
+    sync_lag = max(0.0, float(cam.get('sync_lag_s', 0.06)))
     pid = TrackerPID.from_config(pid_cfg)
     class_vote = ClassVote(cfg['tracking'].get('class_vote_frames', 60))
 
@@ -543,6 +544,7 @@ def main():
         cap = None
 
     fps, t_prev = 0.0, time.monotonic()
+    t_run0 = t_prev
     frame_n = 0
     prev_rc_filter, rc_filter = 'any', 'any'
     display_ready, just_rewound = False, False
@@ -644,7 +646,9 @@ def main():
             reid.observe_frame(tracks, now)
             if reid.enabled:
                 lost_limit = max(max_lost, int(reid.timeout_s * max(fps, 15.0)) + 1)
-            tm = fc.get_telemetry() if fc is not None else {}
+            # tilt / altitude / speed as they were when this frame was captured, not as they are now
+            tm = fc.telemetry_at(now - sync_lag) if fc is not None else {}
+            tilt_now = fc.get_telemetry().get('tilt_rad', 0.0) if fc is not None else 0.0
             hdg = math.radians(tm.get('heading', 0))
             v_fwd = tm.get('vx', 0.0) * math.cos(hdg) + tm.get('vy', 0.0) * math.sin(hdg)
 
@@ -757,7 +761,8 @@ def main():
                 errors=state.errors.total(),
                 gs=round(math.hypot(tm.get('vx', 0.0), tm.get('vy', 0.0)), 2), v_fwd=round(v_fwd, 2),
                 tilt_deg=round(math.degrees(tm.get('tilt_rad', 0.0)), 1), det_ms=round(det_ms, 1),
-                reid=reid_note)
+                reid=reid_note, t_read=round(now - t_run0, 3),
+                tilt_now_deg=round(math.degrees(tilt_now), 2))
 
             # ---- display + keys ----------------------------------------------
             gcs.update_frame(frame)

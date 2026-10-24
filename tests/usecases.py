@@ -32,7 +32,7 @@ def line(v, x0=15.0, y0=0.0, hdg=0.0, hold_s=0.0, accel=None):
     return f
 
 
-def stop_go(v, period=30.0, x0=15.0, accel=3.0):
+def stop_go(v, period=30.0, x0=15.0, accel=3.0, hold_s=0.0):
     """Drive for period/2, stop for period/2, with finite accel/brake (a car cannot stop instantly)."""
     cache = {}
 
@@ -47,7 +47,7 @@ def stop_go(v, period=30.0, x0=15.0, accel=3.0):
         return 0.0
 
     def f(t):
-        n = int(t / 0.01)
+        n = int(max(0.0, t - hold_s) / 0.01)
         if n not in cache:                 # integrate lazily, memoised
             last = max(cache) if cache else -1
             x = cache[last] if last >= 0 else x0
@@ -58,8 +58,10 @@ def stop_go(v, period=30.0, x0=15.0, accel=3.0):
     return f
 
 
-def zigzag(v, amp=4.0, period=12.0, x0=15.0):
-    return lambda t: (x0 + v * t, amp * math.sin(2 * math.pi * t / period))
+def zigzag(v, amp=4.0, period=12.0, x0=15.0, hold_s=0.0, accel=None):
+    """Forward run with sideways weave (lane changes). Stationary for hold_s, then ramps at accel."""
+    fwd = line(v, x0=x0, hold_s=hold_s, accel=accel)
+    return lambda t: (fwd(t)[0], amp * math.sin(2 * math.pi * max(0.0, t - hold_s) / period))
 
 
 def loop(v, radius, x0=15.0):
@@ -90,7 +92,7 @@ class UseCase:
 # Airframe presets. quad_10_15in is an ASSUMED typical 10-15 inch frame (no measured data): fast, strong
 # thrust, acceleration limited by the autopilot (WPNAV_ACCEL 600 cm/s^2 in ardupilot_fast.param).
 AIRFRAMES = {
-    "quad_10_15in": dict(max_speed=30.0, max_accel=6.0, drag_tilt_deg_per_ms=1.0),
+    "quad_10_15in": dict(max_speed=30.0, max_accel=4.0, drag_tilt_deg_per_ms=1.0),
 }
 
 
@@ -106,9 +108,9 @@ USE_CASES = [
     UseCase("cyclist 8 m/s", line(8.0, hold_s=5, accel=1.5), duration=70, **{**MOTO, 'class_id': 9}),
     UseCase("motorcycle 15 m/s", line(15.0, hold_s=5, accel=3.0), duration=60, **MOTO),
     UseCase("city car 12 m/s", line(12.0, hold_s=5, accel=2.5), duration=60, **CAR),
-    UseCase("city car 12 m/s, lane changes", zigzag(12.0, amp=4.0, period=14.0), duration=60, **CAR),
+    UseCase("city car 12 m/s, lane changes", zigzag(12.0, amp=4.0, period=14.0, hold_s=5, accel=2.5), duration=60, **CAR),
     UseCase("car cornering 10 m/s, r=40 m", loop(10.0, 40.0), duration=70, **CAR),
-    UseCase("traffic stop-and-go 8 m/s", stop_go(8.0, 30.0), duration=120, **CAR),
+    UseCase("traffic stop-and-go 8 m/s", stop_go(8.0, 30.0, hold_s=5), duration=120, **CAR),
     UseCase("bus 10 m/s", line(10.0, hold_s=5, accel=1.5), duration=60, **BUS),
     UseCase("sim pickup patrol, 2.1 m/s peak", patrol(2.1), duration=120, start=(0.0, 0.0, 10.0, -math.pi / 2), **CAR),
     UseCase("highway car 28 m/s", line(28.0, hold_s=5, accel=3.0), duration=60,
@@ -120,10 +122,10 @@ USE_CASES = [
             airframe=AIRFRAMES["quad_10_15in"], note="2 km road", **{**CAR, "profile": "highway"}),
 ]
 
-AIRFRAME = dict(max_speed=20.0, max_accel=5.0, tilt_coupling=True, tilt_comp=True, tau_v=0.5,
-                latency_frames=5,                     # ~0.17 s camera + detector + link delay at 30 fps
+AIRFRAME = dict(max_speed=20.0, max_accel=4.0, tilt_coupling=True, tilt_comp=True, tau_v=0.5,
+                latency_frames=6,                     # ~0.3 s camera + detector + link delay (measured fps was 19 in Gazebo)
                 burst_prob=0.01, burst_frames=8,      # detector dropouts arrive in ~0.27 s bursts in the real sim
-                fps=30.0, pixel_noise=2.0, dropout=0.02, seed=1)
+                fps=19.0, pixel_noise=2.0, dropout=0.02, seed=1)      # 19 fps = median measured in the Gazebo highway run
 
 
 def evaluate(uc: UseCase, cfg: dict, gimbal=None, airframe=None, extra=None):

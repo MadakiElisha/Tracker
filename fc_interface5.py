@@ -33,6 +33,7 @@
 
 import queue
 import threading
+from telemetry_history import TelemetryHistory
 import time
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -277,6 +278,8 @@ class ArduPilotBackend(FCBackend):
                            65, int(1e6 / max(1, self.fc_cfg.get('telemetry_rate_hz', 10))))
         self._send_command(mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
                            30, int(1e6 / max(1, self.fc_cfg.get('attitude_rate_hz', 20))))   # ATTITUDE
+        self._send_command(mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+                           33, int(1e6 / max(1, self.fc_cfg.get('position_rate_hz', 20))))   # GLOBAL_POSITION_INT
         ack = self.master.recv_match(type='COMMAND_ACK', blocking=True, timeout=3.0)
         if ack is None:
             log.warning("No COMMAND_ACK for RC_CHANNELS interval request; RC stream may be inactive.")
@@ -288,6 +291,7 @@ class ArduPilotBackend(FCBackend):
                        "heading": 0, "vx": 0.0, "vy": 0.0, "vz": 0.0,
                        "battery": 0.0, "gps_sats": 0, "tilt_rad": 0.0}
         self._telem_lock = threading.Lock()
+        self.history = TelemetryHistory()
         self._last_rx = time.monotonic()
 
         self._rc = RCDecoder(self.rc_cfg, int(self.fc_cfg.get('rc_cal_frames', 10)))
@@ -350,10 +354,13 @@ class ArduPilotBackend(FCBackend):
                             msg.vx / 100.0, msg.vy / 100.0, msg.vz / 100.0)
                         if msg.hdg != 65535:
                             self._telem["heading"] = int(msg.hdg / 100)
+                    self.history.push(self._last_rx, alt=self._telem["alt"],
+                                      vx=self._telem["vx"], vy=self._telem["vy"])
                 elif t == 'ATTITUDE':
                     with self._telem_lock:
                         # MAVLink pitch is nose-UP positive; the controller uses nose-DOWN positive
                         self._telem["tilt_rad"] = -float(msg.pitch)
+                    self.history.push(self._last_rx, tilt_rad=self._telem["tilt_rad"])
                 elif t == 'SYS_STATUS':
                     with self._telem_lock:
                         # 65535 / -1 mean "not reported"
@@ -474,6 +481,14 @@ class FCInterface:
 
     def connect(self) -> bool:                 return self.backend.connect()
     def get_telemetry(self) -> dict:           return self.backend.get_telemetry()
+    def telemetry_at(self, t: float) -> dict:
+        """Latest telemetry with tilt/alt/velocity replaced by their values at monotonic time t."""
+        cur = dict(self.backend.get_telemetry())
+        h = getattr(self.backend, 'history', None)
+        snap = h.at(t) if h is not None else None
+        if snap:
+            cur.update({k: v for k, v in snap.items() if k in ('tilt_rad', 'alt', 'vx', 'vy')})
+        return cur
     def telemetry_age(self):                   return self.backend.telemetry_age()
     def consume_rc_events(self) -> tuple:      return self.backend.consume_rc_events()
     def arm_and_takeoff(self, alt) -> bool:    return self.backend.arm_and_takeoff(alt)

@@ -5,7 +5,7 @@
 # 16-24 m/s caps are only reachable if these are raised too.
 
 WPNAV_SPEED,2500       # 25 m/s horizontal speed limit (cm/s)
-WPNAV_ACCEL,600        # 6 m/s^2 horizontal acceleration (cm/s^2); also bounds body lean transients
+WPNAV_ACCEL,400        # 4 m/s^2 horizontal acceleration (cm/s^2); bounds lean spikes. Offline model at the measured 19 fps: 4 beats 6
 LOIT_SPEED,2500
 ANGLE_MAX,6000         # allow 60 deg of lean (cdeg); 30 deg default caps speed at roughly 12 m/s
 PSC_ANGLE_MAX,0        # 0 = derive from ANGLE_MAX
