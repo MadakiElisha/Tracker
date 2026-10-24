@@ -1,0 +1,40 @@
+# Exhibition show: walker -> runner -> sprinter (with a hidden-target re-ID moment) -> car 8 -> 14 -> 20 m/s.
+# Only run speeds you have verified in sim (see docs/SIM_VALIDATION.md, verification ladder). Delete or edit segments freely.
+name: Drone Tracker exhibition
+profile: highway          # tracker mission profile for the whole show (cap 24 m/s, 8 m altitude)
+scene: highway-fast       # launch_sim.sh scene
+gap_m: 10                 # new actor appears this far beyond where the previous one stopped
+lock_timeout_s: 25        # max wait for the lock before the actor starts moving anyway (and the segment is flagged)
+segments:
+  - name: "Walker 1.5 m/s"
+    actor: person
+    speed: 1.5
+    accel: 1.0
+    run_s: 45
+    note: "Steady follow of a walking person."
+  - name: "Runner 7 m/s"
+    actor: person
+    speed: 7
+    run_s: 30
+    note: "Jogger/runner: the camera now leans into the chase."
+  - name: "Sprinter 10 m/s + hidden-target recovery"
+    actor: person
+    speed: 10
+    run_s: 36
+    vanish_after_s: 22
+    vanish_for_s: 1.5
+    note: "Target disappears for 1.5 s mid-sprint: the drone coasts and re-identifies it."
+  - name: "Car 8 m/s"
+    actor: car
+    speed: 8
+    run_s: 30
+  - name: "Car 14 m/s + lane changes"
+    actor: car
+    speed: 14
+    run_s: 30
+    lane_change_s: 10
+  - name: "Car 20 m/s"
+    actor: car
+    speed: 20
+    run_s: 34
+    note: "72 km/h pursuit."

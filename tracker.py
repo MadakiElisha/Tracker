@@ -47,6 +47,7 @@ from gcs_server      import GCSServer
 from mouse_lock      import MouseLocker
 from safety          import SafetySupervisor, HOVER, RELEASE_CONTROL, RTL, limit_vertical
 from run_logger      import RunLogger
+from demo_control    import CommandChannel, VideoRecorder, pick_target
 
 WINDOW = "Drone Tracker v2.1"
 
@@ -425,6 +426,11 @@ def main():
                         help='Perception + PID only; no FC commands are sent')
     parser.add_argument('--no-display', action='store_true',
                         help='Headless: no OpenCV window')
+    parser.add_argument('--cmd-file', default=None, metavar='PATH',
+                        help='Demo launcher control file (takeoff / lock / release / rtl / land / quit / mark). '
+                             'Off unless given.')
+    parser.add_argument('--record', default=None, metavar='PATH',
+                        help='Write the annotated video to this file. Off unless given.')
     args = parser.parse_args()
     if args.profile:
         try:
@@ -525,6 +531,12 @@ def main():
     run_log = RunLogger(run_cfg.get('dir', 'logs/runs'), run_cfg.get('enabled', True))
     if run_log.path:
         log.info("Run log: %s", run_log.path)
+    cmd_ch = CommandChannel(args.cmd_file) if args.cmd_file else None
+    recorder = VideoRecorder(args.record, 20.0, (fw, fh)) if args.record else None
+    if recorder is not None and not recorder.ok:
+        log.warning("Cannot write video '%s'; recording is off.", args.record)
+        recorder = None
+    seg_label, pending_lock, pending_lock_t = "", None, 0.0
 
     # -- video ------------------------------------------------------------
     src = int(args.source) if str(args.source).isdigit() else args.source
@@ -692,6 +704,25 @@ def main():
                 if hit is not None: try_lock(hit, f"GCS_TAP{tap}")
                 else: log.debug("GCS tap %s hit no target.", tap)
 
+            # ---- demo launcher commands (opt-in) -----------------------------
+            if cmd_ch is not None:
+                for verb, arg in cmd_ch.poll():
+                    log.info("CMD: %s %s", verb, arg)
+                    if verb == 'takeoff':   state.flag_takeoff.set()
+                    elif verb == 'rtl':     state.flag_rtl.set()
+                    elif verb == 'land':    state.flag_land.set()
+                    elif verb == 'quit':    state.flag_quit.set()
+                    elif verb == 'release': state.release_lock("CMD", pid); pending_lock = None
+                    elif verb == 'mark':    seg_label = arg
+                    elif verb == 'lock':    pending_lock, pending_lock_t = arg or 'largest', now
+                if pending_lock is not None:
+                    hit = pick_target(tracks, pending_lock, target_classes, class_groups)
+                    if hit is not None:
+                        try_lock(hit, f"CMD:{pending_lock}")
+                        pending_lock = None
+                    elif now - pending_lock_t > 60.0:
+                        pending_lock = None
+
             # ---- control ---------------------------------------------------
             locked_box, locked_cls = None, None
             reid_note = ""
@@ -762,9 +793,14 @@ def main():
                 gs=round(math.hypot(tm.get('vx', 0.0), tm.get('vy', 0.0)), 2), v_fwd=round(v_fwd, 2),
                 tilt_deg=round(math.degrees(tm.get('tilt_rad', 0.0)), 1), det_ms=round(det_ms, 1),
                 reid=reid_note, t_read=round(now - t_run0, 3),
-                tilt_now_deg=round(math.degrees(tilt_now), 2))
+                tilt_now_deg=round(math.degrees(tilt_now), 2), seg=seg_label)
 
             # ---- display + keys ----------------------------------------------
+            if seg_label:
+                cv2.putText(frame, seg_label, (10, fh - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (255, 255, 255), 2, cv2.LINE_AA)
+            if recorder is not None:
+                recorder.write(frame)
             gcs.update_frame(frame)
             key = 0xFF
             if not args.no_display:
@@ -819,6 +855,8 @@ def main():
         if not args.no_display:
             cv2.destroyAllWindows()
         run_log.close()
+        if recorder is not None:
+            recorder.close()
         if fc is not None:
             fc.disconnect()
         log.info("Stopped. Tracker errors: %d %s",

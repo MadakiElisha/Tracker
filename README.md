@@ -281,3 +281,6 @@ Built with ArduPilot SITL, Gazebo Harmonic, Ultralytics YOLO,
 ByteTrack, and pymavlink. Inspired by the capabilities of
 Skydio X10 and Anduril Bolt.
 
+
+## Exhibition demo
+`python3 demo/run_demo.py` runs a scripted 4-5 minute show with recording and a results page. See [docs/DEMO.md](docs/DEMO.md).

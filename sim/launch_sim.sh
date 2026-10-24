@@ -167,6 +167,11 @@ if [ "$FC" = "ardupilot" ]; then
     # ----------------------------------------------------------
     # CHANGE 2: Hand standard input over to MAVProxy instead of 'wait'
     # ----------------------------------------------------------
-    fg %"sim_vehicle.py"
+    if [ -n "$DEMO_NONINTERACTIVE" ]; then
+        # demo/run_demo.py starts this script without a terminal: nothing to hand control to, just stay alive
+        wait $SITL_PID
+    else
+        fg %"sim_vehicle.py"
+    fi
 
 fi
