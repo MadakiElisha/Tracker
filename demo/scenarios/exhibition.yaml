@@ -28,7 +28,7 @@ segments:
     vanish_for_s: 1.5
     note: "Target disappears for 1.5 s mid-sprint: the drone coasts and re-identifies it."
   - name: "Car 8 m/s"
-    profile: vehicle
+    profile: vehicle_sim
     actor: car
     speed: 8
     run_s: 30

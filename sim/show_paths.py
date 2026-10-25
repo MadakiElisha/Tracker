@@ -64,3 +64,12 @@ def actor_poses(seg: dict, t_move: float) -> Dict[str, Tuple[float, float, float
         hidden = hp.vanished(t, 0.0, seg["vanish_after_s"], seg["vanish_for_s"]) if seg["vanish_after_s"] > 0 else False
         out[name] = (seg["x0"] + d, y, HIDDEN_Z if hidden else 0.0, 0.0)
     return out
+
+
+PARKED = [f"hwy_parked_{i}" for i in range(4)]   # background SUVs on the shoulder (x from make_highway_world.py)
+PARKED_X = (300, 700, 1100, 1500)
+
+
+def parked_hidden_poses():
+    """Poses that take the background traffic out of view so the tracker cannot lock onto it."""
+    return {n: (float(x), -8.5, HIDDEN_Z, 0.0) for n, x in zip(PARKED, PARKED_X)}

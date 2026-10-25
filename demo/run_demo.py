@@ -128,9 +128,10 @@ def fnum(v, d=0.0):
 class ActorMover(threading.Thread):
     """Moves the sprinter and car in Gazebo (wall-clock, 30 Hz). `send` is injectable so tests need no simulator."""
 
-    def __init__(self, send, rate=30.0):
+    def __init__(self, send, rate=30.0, hide_traffic=True):
         super().__init__(daemon=True)
         self.send, self.dt = send, 1.0 / rate
+        self.hide_traffic, self._hide_pending = hide_traffic, True
         self.seg, self.t_go = None, None
         self.stop_ev = threading.Event()
         self.failures = 0
@@ -139,6 +140,7 @@ class ActorMover(threading.Thread):
     def set_segment(self, seg):
         with self.lock:
             self.seg, self.t_go = seg, None
+            self._hide_pending = True
 
     def go(self):
         with self.lock:
@@ -150,6 +152,13 @@ class ActorMover(threading.Thread):
                 seg, t_go = self.seg, self.t_go
             if seg is not None and self.send is not None:
                 t_move = -1.0 if t_go is None else time.monotonic() - t_go
+                if self.hide_traffic and self._hide_pending:
+                    self._hide_pending = False
+                    for name, (x, y, z, yaw) in sp.parked_hidden_poses().items():
+                        try:
+                            self.send(name, x, y, z, yaw)
+                        except Exception:
+                            pass
                 for name, (x, y, z, yaw) in sp.actor_poses(seg, t_move).items():
                     try:
                         ok = self.send(name, x, y, z, yaw)
@@ -386,6 +395,8 @@ def main(argv=None):
     ap.add_argument("--monitor", default="udpin:127.0.0.1:14551", help="second link for readiness checks (sim)")
     ap.add_argument("--source", default="gz:/drone/camera", help="tracker video source (hardware: camera index / URL)")
     ap.add_argument("--use-running-sim", action="store_true", help="do not start the simulator (already running)")
+    ap.add_argument("--keep-traffic", action="store_true",
+                    help="leave the parked background cars in the road scene (default: hidden, the tracker may lock onto them)")
     ap.add_argument("--headless", action="store_true", help="no tracker window (still records the video)")
     ap.add_argument("--no-open", action="store_true", help="do not open the live page / report in the browser")
     ap.add_argument("--live-port", type=int, default=8090)
@@ -476,7 +487,7 @@ def main(argv=None):
 
         if args.mode == "sim" and not args.test_stack:
             try:
-                show.mover = ActorMover(gz_sender())
+                show.mover = ActorMover(gz_sender(), hide_traffic=not args.keep_traffic)
             except ImportError:
                 raise RuntimeError("Gazebo Python bindings missing: sudo apt install python3-gz-transport13")
             show.mover.start()          # idle (sends nothing) until the first segment: targets stay where the world put them

@@ -223,6 +223,18 @@ profiles:
       z: {mode: altitude, target_altitude: 10.0}
       feedforward: {enabled: true}
       setpoint_area_by_class: {3: 0.004, 4: 0.005, 5: 0.008, 8: 0.010}
+  vehicle_sim:                 # same as `vehicle`, but one follow distance for car/van/truck/bus: the Gazebo pickup is classified as all three
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 16.0, target_altitude: 10.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 0.2}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 10.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {3: 0.005, 4: 0.005, 5: 0.005, 8: 0.005}
   motorcycle:                  # motorbikes / scooters / cyclists, up to ~20 m/s
     camera: {gimbal: false}
     flight: {max_forward_speed: 20.0, target_altitude: 8.0}

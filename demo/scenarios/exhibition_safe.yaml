@@ -21,12 +21,12 @@ segments:
     vanish_for_s: 1.5
     note: "The target disappears for 1.5 s: the drone coasts and re-identifies it."
   - name: "Car 8 m/s"
-    profile: vehicle
+    profile: vehicle_sim
     actor: car
     speed: 8
     run_s: 40
   - name: "Car 12 m/s + lane change"
-    profile: vehicle
+    profile: vehicle_sim
     actor: car
     speed: 12
     run_s: 40
