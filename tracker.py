@@ -74,8 +74,6 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
     cmd_timeout = cfg['fc']['watchdog_timeout']
     last_action = "NONE"
     disarmed_since = None
-    max_fwd = cfg['flight']['max_forward_speed']
-    max_yaw = cfg['flight']['max_yaw_rate']
     warn_v  = cfg['safety'].get('battery_warn_v', 0.0)
     battery_warned = False
     log.info("FC/safety thread started (no_fly=%s).", no_fly)
@@ -181,6 +179,8 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
                 vx, vz, yaw, age = state.cmd.read_with_age()
                 if age > cmd_timeout:
                     vx = vz = yaw = 0.0        # vision loop stale: hold position
+                max_fwd = cfg['flight']['max_forward_speed']   # read each time: a demo `profile` command may change it
+                max_yaw = cfg['flight']['max_yaw_rate']
                 vx  = max(-max_fwd, min(max_fwd, vx))       # master speed caps,
                 yaw = max(-max_yaw, min(max_yaw, yaw))      # independent of PID tuning
                 vz = limit_vertical(vz, telem.get('alt', 0.0),
@@ -432,6 +432,7 @@ def main():
     parser.add_argument('--record', default=None, metavar='PATH',
                         help='Write the annotated video to this file. Off unless given.')
     args = parser.parse_args()
+    cfg_all = cfg                       # keeps the `profiles:` table for runtime switching (demo `profile` command)
     if args.profile:
         try:
             cfg = apply_profile(cfg, args.profile)
@@ -714,6 +715,25 @@ def main():
                     elif verb == 'quit':    state.flag_quit.set()
                     elif verb == 'release': state.release_lock("CMD", pid); pending_lock = None
                     elif verb == 'mark':    seg_label = arg
+                    elif verb == 'profile':
+                        # switch mission profile in flight (demo shows mix walkers and cars). Only between locks.
+                        try:
+                            new = apply_profile(cfg_all, arg)
+                        except ValueError as e:
+                            log.error("CMD profile: %s", e)
+                        else:
+                            state.release_lock("PROFILE", pid); pending_lock = None
+                            cfg['flight'].update(new['flight'])      # fc thread reads these each cycle
+                            cfg['pid'] = new['pid']
+                            cam = new.get('camera', {}); gimbal = bool(cam.get('gimbal', False))
+                            pid_cfg = dict(new['pid'])
+                            pid_cfg.setdefault('camera_hfov_deg', cam.get('hfov_deg', 90.0))
+                            pid_cfg.setdefault('camera_pitch_deg', cam.get('pitch_deg', 20.0))
+                            pid = TrackerPID.from_config(pid_cfg)
+                            coast_hold = max(0.0, min(1.5, float(new['tracking'].get('coast_hold_s', 0.0))))
+                            state.cmd.zero()
+                            log.info("Profile switched to '%s': cap %.1f m/s, altitude %.1f m",
+                                     arg, new['flight']['max_forward_speed'], new['flight']['target_altitude'])
                     elif verb == 'lock':    pending_lock, pending_lock_t = arg or 'largest', now
                 if pending_lock is not None:
                     hit = pick_target(tracks, pending_lock, target_classes, class_groups)

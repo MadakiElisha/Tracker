@@ -4,12 +4,12 @@ CommandChannel   a text file the demo launcher appends one command per line to; 
                  each frame. Local file, no network port, so it adds no new way into the drone.
 VideoRecorder    writes the annotated frames (what the HUD shows) to a video file.
 
-Commands:  takeoff | lock [largest|<class group or name>] | release | rtl | land | quit | mark <label>
+Commands:  takeoff | lock [largest|<class group or name>] | release | rtl | land | quit | mark <label> | profile <name>
 """
 import os
 from typing import List, Optional, Tuple
 
-VERBS = {"takeoff", "lock", "release", "rtl", "land", "quit", "mark"}
+VERBS = {"takeoff", "lock", "release", "rtl", "land", "quit", "mark", "profile"}
 
 
 def parse_command(line: str) -> Optional[Tuple[str, str]]:

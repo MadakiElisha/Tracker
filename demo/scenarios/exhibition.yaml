@@ -7,17 +7,20 @@ gap_m: 10                 # new actor appears this far beyond where the previous
 lock_timeout_s: 25        # max wait for the lock before the actor starts moving anyway (and the segment is flagged)
 segments:
   - name: "Walker 1.5 m/s"
+    profile: pedestrian
     actor: person
     speed: 1.5
     accel: 1.0
     run_s: 45
     note: "Steady follow of a walking person."
   - name: "Runner 7 m/s"
+    profile: runner
     actor: person
     speed: 7
     run_s: 30
     note: "Jogger/runner: the camera now leans into the chase."
   - name: "Sprinter 10 m/s + hidden-target recovery"
+    profile: highway_runner
     actor: person
     speed: 10
     run_s: 36
@@ -25,15 +28,18 @@ segments:
     vanish_for_s: 1.5
     note: "Target disappears for 1.5 s mid-sprint: the drone coasts and re-identifies it."
   - name: "Car 8 m/s"
+    profile: vehicle
     actor: car
     speed: 8
     run_s: 30
   - name: "Car 14 m/s + lane changes"
+    profile: highway
     actor: car
     speed: 14
     run_s: 30
     lane_change_s: 10
   - name: "Car 20 m/s"
+    profile: highway
     actor: car
     speed: 20
     run_s: 34

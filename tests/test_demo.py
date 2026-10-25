@@ -134,8 +134,8 @@ def test_run_demo_drives_the_real_tracker_end_to_end(tmp_path):
     cfgp = tmp_path / "cfg.yaml"; cfgp.write_text(yaml.safe_dump(cfg))
     scen = tmp_path / "s.yaml"
     scen.write_text(yaml.safe_dump({"name": "T", "profile": "highway", "lock_timeout_s": 4, "segments": [
-        {"name": "Person seg", "actor": "person", "speed": 2, "run_s": 8},
-        {"name": "Car seg", "actor": "car", "speed": 5, "run_s": 8}]}))
+        {"name": "Person seg", "actor": "person", "speed": 2, "run_s": 8, "profile": "pedestrian"},
+        {"name": "Car seg", "actor": "car", "speed": 5, "run_s": 8, "profile": "vehicle"}]}))
     env = dict(os.environ, PYTHONPATH=f"{tmp_path / 'stub'}{os.pathsep}{ROOT}", PYTHONUNBUFFERED="1")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "demo", "run_demo.py"), "--scenario", str(scen),
                         "--config", str(cfgp), "--out", str(tmp_path / "out"), "--test-stack", "--headless",
@@ -148,5 +148,16 @@ def test_run_demo_drives_the_real_tracker_end_to_end(tmp_path):
     verdicts = {s["name"]: s["verdict"] for s in summary["segments"]}
     assert verdicts["Person seg"] == "PASS", (verdicts, r.stdout)       # 'lock person' command found the pedestrian
     assert verdicts["Car seg"] in ("FAIL", "PARTIAL")                   # no vehicle in view: honestly not a pass
+    tlog = (out / "tracker.log").read_text()
+    assert "Profile switched to 'pedestrian': cap 4.0" in tlog and "Profile switched to 'vehicle': cap 16.0" in tlog
     assert (out / "report.html").exists() and (out / "run_log.csv").exists()
     assert any(f.name.startswith("annotated") for f in out.iterdir())
+
+
+def test_shipped_scenarios_name_valid_profiles_with_cap_above_target_speed():
+    cfg = yaml.safe_load(open(os.path.join(ROOT, "config.yaml")))
+    for f in ("exhibition.yaml", "exhibition_safe.yaml"):
+        doc = yaml.safe_load(open(os.path.join(ROOT, "demo", "scenarios", f)))
+        for s in sp.load_segments(doc):
+            prof = cfg["profiles"][s["profile"]]            # KeyError = typo
+            assert prof["flight"]["max_forward_speed"] > s["speed"], (f, s["name"])   # a drone capped at the target's speed never closes the gap

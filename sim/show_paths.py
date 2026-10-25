@@ -29,7 +29,7 @@ def load_segments(doc: dict) -> List[dict]:
             accel=float(s.get("accel", 3.0 if actor == "person" else 2.5)),
             lane_change_s=float(s.get("lane_change_s", 0.0)),
             vanish_after_s=float(s.get("vanish_after_s", 0.0)), vanish_for_s=float(s.get("vanish_for_s", 1.5)),
-            note=str(s.get("note", "")),
+            note=str(s.get("note", "")), profile=s.get("profile"),
         ))
     if not segs:
         raise ValueError("scenario has no segments")

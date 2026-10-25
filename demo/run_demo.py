@@ -258,6 +258,8 @@ class Show:
             if self.mover:
                 self.mover.set_segment(seg)
             self.cmd("release")
+            if seg.get("profile"):
+                self.cmd(f"profile {seg['profile']}")      # right gains and speed cap for this kind of target
             self.cmd(f"mark {seg['name']}")
             self.last_lock_cmd = 0.0
             if self.a.lock == "manual":
@@ -310,7 +312,8 @@ def stack_commands(args, doc, out):
     """The exact commands a person would type, in the order they would type them."""
     py = sys.executable
     sim = ["bash", str(ROOT / "sim" / "launch_sim.sh"), "ardupilot", doc.get("scene", "highway-fast")]
-    tr = [py, str(ROOT / "tracker.py"), "--config", str(args.config), "--profile", doc.get("profile", "highway"),
+    first = (doc.get("segments") or [{}])[0].get("profile") or doc.get("profile", "highway")
+    tr = [py, str(ROOT / "tracker.py"), "--config", str(args.config), "--profile", first,
           "--connect", args.connect, "--source", args.source, "--cmd-file", str(out / "commands.txt"),
           "--record", str(out / "annotated_raw.mp4")]
     if args.headless:
@@ -400,12 +403,12 @@ def main(argv=None):
                                 note="Operator-selected target, live flight.")]
     segs = sp.load_segments(doc)
     problems, cfg = preflight_files(args, doc)
-    prof_cfg = apply_profile(cfg, doc.get("profile", "highway"))
+    prof_cfg = apply_profile(cfg, segs[0].get("profile") or doc.get("profile", "highway"))
     alt = prof_cfg["flight"]["target_altitude"]
 
     total = sum(s["run_s"] for s in segs)
     say(f"{doc.get('name')}: {len(segs)} segments, about {total:.0f} s of chasing "
-        f"(~{(total + 8 * len(segs)) / 60:.1f} min with locking). Profile {doc.get('profile')}, altitude {alt:.0f} m, lock {args.lock}.")
+        f"(~{(total + 8 * len(segs)) / 60:.1f} min with locking). Profile per segment, takeoff altitude {alt:.0f} m, lock {args.lock}.")
     for i, s in enumerate(segs, 1):
         say(f"  {i}. {s['name']:<44} {s['speed']:>5.1f} m/s  {s['run_s']:>3.0f} s  road {s['x0']:.0f}-{s['x0'] + s['distance']:.0f} m")
     for p in problems:
