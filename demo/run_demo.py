@@ -352,6 +352,10 @@ def preflight_files(args, doc):
         world = ROOT / "sim" / "worlds" / ("highway_world_fast.sdf" if doc.get("scene") == "highway-fast" else "highway_world.sdf")
         if not world.exists():
             problems.append(f"world missing: {world} (see docs/SIM_VALIDATION.md to generate it)")
+        if doc.get("scene") == "highway-fast" and not (Path.home() / "ardupilot_gazebo" / "models" / "fast_quad_with_ardupilot").exists():
+            problems.append("the stronger-thrust quad is not built yet. Run once: "
+                            "python3 sim/make_fast_quad.py ~/ardupilot_gazebo --thrust-scale 1.0   "
+                            "(or set `scene: highway` in the scenario to use the stock Iris)")
         for tool in ("gz",):
             if not shutil.which(tool):
                 problems.append(f"{tool} not found on PATH")
