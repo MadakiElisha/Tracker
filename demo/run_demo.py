@@ -221,7 +221,12 @@ class Show:
         for p in self.procs:
             if not p.alive() and p.name in ("tracker", "sim"):
                 self.set(message=f"{p.name} stopped unexpectedly: ending the show safely")
-                say(f"{p.name} stopped unexpectedly; aborting.")
+                say(f"{p.name} stopped unexpectedly (exit code {p.p.returncode}); aborting. Last lines of {p.name}.log:")
+                try:
+                    for ln in (self.out / f"{p.name}.log").read_text(errors="replace").splitlines()[-25:]:
+                        say(f"    | {ln}")
+                except OSError:
+                    pass
                 self.abort.set()
 
     def locked_now(self):
