@@ -217,6 +217,13 @@ class Show:
             time.sleep(poll)
         return False
 
+    def dump_log(self, name, n=25):
+        try:
+            for ln in (self.out / f"{name}.log").read_text(errors="replace").splitlines()[-n:]:
+                say(f"    | {ln}")
+        except OSError:
+            pass
+
     def check_alive(self):
         for p in self.procs:
             if not p.alive() and p.name in ("tracker", "sim"):
@@ -468,8 +475,7 @@ def main(argv=None):
                 show.mover = ActorMover(gz_sender())
             except ImportError:
                 raise RuntimeError("Gazebo Python bindings missing: sudo apt install python3-gz-transport13")
-            show.mover.set_segment(segs[0])
-            show.mover.start()
+            show.mover.start()          # idle (sends nothing) until the first segment: targets stay where the world put them
 
         if args.mode == "sim" or args.auto_takeoff:
             show.set(phase=f"taking off to {alt:.0f} m")
@@ -477,6 +483,8 @@ def main(argv=None):
             ok = show.wait(lambda: fnum(show.tail.last().get("airborne")) == 1 and
                            (args.test_stack or fnum(show.tail.last().get("alt")) >= alt - 1.5), 150.0, poll=0.5)
             if not ok and not show.abort.is_set():
+                say("takeoff did not complete. Last lines of tracker.log:")
+                show.dump_log("tracker")
                 raise RuntimeError("takeoff did not complete (see tracker.log)")
         else:
             show.set(phase="waiting for the pilot to take off")
