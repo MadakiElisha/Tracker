@@ -485,6 +485,15 @@ def main(argv=None):
             if not ok and not show.abort.is_set():
                 say("takeoff did not complete. Last lines of tracker.log:")
                 show.dump_log("tracker")
+                try:
+                    pre = [l for l in (out / "sim.log").read_text(errors="replace").splitlines()
+                           if "PreArm" in l or "Arm:" in l or "EKF" in l][-12:]
+                    if pre:
+                        say("autopilot messages from sim.log (the reason it would not arm is usually here):")
+                        for l in pre:
+                            say(f"    | {l}")
+                except OSError:
+                    pass
                 raise RuntimeError("takeoff did not complete (see tracker.log)")
         else:
             show.set(phase="waiting for the pilot to take off")
