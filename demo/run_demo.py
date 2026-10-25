@@ -374,7 +374,8 @@ def preflight_files(args, doc):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", choices=["sim", "hardware"], default="sim")
-    ap.add_argument("--scenario", default=str(ROOT / "demo" / "scenarios" / "exhibition.yaml"))
+    ap.add_argument("--scenario", default=str(ROOT / "demo" / "scenarios" / "exhibition_safe.yaml"),
+                    help="default: exhibition_safe.yaml (moderate speeds). exhibition.yaml adds the 10-20 m/s headline segments.")
     ap.add_argument("--config", default=str(ROOT / "config.yaml"))
     ap.add_argument("--lock", choices=["auto", "manual"], default="auto",
                     help="auto: the launcher locks each target for you (clicking also works). manual: you click it.")
@@ -478,23 +479,28 @@ def main(argv=None):
             show.mover.start()          # idle (sends nothing) until the first segment: targets stay where the world put them
 
         if args.mode == "sim" or args.auto_takeoff:
-            show.set(phase=f"taking off to {alt:.0f} m")
-            show.cmd("takeoff")
-            ok = show.wait(lambda: fnum(show.tail.last().get("airborne")) == 1 and
-                           (args.test_stack or fnum(show.tail.last().get("alt")) >= alt - 1.5), 150.0, poll=0.5)
+            ok = False
+            for attempt in (1, 2, 3):
+                show.set(phase=f"taking off to {alt:.0f} m" + (f" (attempt {attempt})" if attempt > 1 else ""))
+                show.cmd("takeoff")
+                ok = show.wait(lambda: fnum(show.tail.last().get("airborne")) == 1 and
+                               (args.test_stack or fnum(show.tail.last().get("alt")) >= alt - 1.5), 60.0, poll=0.5)
+                if ok or show.abort.is_set():
+                    break
+                say(f"takeoff attempt {attempt} did not complete. Autopilot messages from sim.log:")
+                try:
+                    for l in [l for l in (out / "sim.log").read_text(errors="replace").splitlines()
+                              if "PreArm" in l or "Arm" in l or "EKF" in l][-6:]:
+                        say(f"    | {l}")
+                except OSError:
+                    pass
+                if attempt < 3:
+                    say("waiting 20 s for the autopilot to settle, then trying again (arming checks stay on).")
+                    show.wait(lambda: False, 20.0)
             if not ok and not show.abort.is_set():
                 say("takeoff did not complete. Last lines of tracker.log:")
                 show.dump_log("tracker")
-                try:
-                    pre = [l for l in (out / "sim.log").read_text(errors="replace").splitlines()
-                           if "PreArm" in l or "Arm:" in l or "EKF" in l][-12:]
-                    if pre:
-                        say("autopilot messages from sim.log (the reason it would not arm is usually here):")
-                        for l in pre:
-                            say(f"    | {l}")
-                except OSError:
-                    pass
-                raise RuntimeError("takeoff did not complete (see tracker.log)")
+                raise RuntimeError("takeoff did not complete after 3 attempts (see tracker.log / sim.log)")
         else:
             show.set(phase="waiting for the pilot to take off")
             show.wait(lambda: fnum(show.tail.last().get("airborne")) == 1, 900.0, poll=1.0)

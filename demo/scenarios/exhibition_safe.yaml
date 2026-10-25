@@ -1,0 +1,29 @@
+# Conservative exhibition show: moderate speeds only. This is the default until a segment has passed rehearsal.
+name: Drone Tracker exhibition (reliable set)
+profile: vehicle          # cap 16 m/s, altitude 10 m: gentler than the 'highway' profile
+scene: highway            # stock Iris; no extra model to build
+gap_m: 10
+lock_timeout_s: 25
+segments:
+  - name: "Walker 1.5 m/s"
+    actor: person
+    speed: 1.5
+    accel: 1.0
+    run_s: 40
+    note: "Steady follow of a walking person."
+  - name: "Jogger 4 m/s + hidden-target recovery"
+    actor: person
+    speed: 4
+    run_s: 40
+    vanish_after_s: 20
+    vanish_for_s: 1.5
+    note: "The target disappears for 1.5 s: the drone coasts and re-identifies it."
+  - name: "Car 8 m/s"
+    actor: car
+    speed: 8
+    run_s: 40
+  - name: "Car 12 m/s + lane change"
+    actor: car
+    speed: 12
+    run_s: 40
+    lane_change_s: 12
