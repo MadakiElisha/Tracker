@@ -1,0 +1,19 @@
+# Just the car segments, for quick iteration on car pursuit (skips the walker and jogger).
+name: Car pursuit only
+profile: vehicle_slow
+scene: highway
+gap_m: 10
+lock_timeout_s: 25
+segments:
+  - name: "Car 5 m/s"
+    profile: vehicle_slow
+    actor: car
+    speed: 5
+    accel: 1.5
+    run_s: 35
+  - name: "Car 8 m/s"
+    profile: vehicle_slow
+    actor: car
+    speed: 8
+    accel: 1.5
+    run_s: 40
