@@ -161,3 +161,16 @@ def test_shipped_scenarios_name_valid_profiles_with_cap_above_target_speed():
         for s in sp.load_segments(doc):
             prof = cfg["profiles"][s["profile"]]            # KeyError = typo
             assert prof["flight"]["max_forward_speed"] > s["speed"], (f, s["name"])   # a drone capped at the target's speed never closes the gap
+
+
+def test_sim_seconds_and_mover_follows_given_clock():
+    import types, run_demo
+    from sim_clock import sim_seconds
+    msg = types.SimpleNamespace(sim_time=types.SimpleNamespace(sec=12, nsec=500_000_000))
+    assert sim_seconds(msg) == 12.5
+    seg = sp.load_segments({"segments": [{"actor": "car", "speed": 10, "run_s": 20, "accel": 5}]})[0]
+    sent, t = {}, {"v": 100.0}
+    m = run_demo.ActorMover(lambda n, x, y, z, yaw: sent.__setitem__(n, x) or True, clock=lambda: t["v"])
+    m.set_segment(seg); m.go()
+    t["v"] = 110.0                                  # 10 s of SIM time pass: the car must be where 10 s of motion puts it
+    assert abs(sp.actor_poses(seg, t["v"] - m.t_go)["highway_car"][0] - (seg["x0"] + 90.0)) < 1e-6

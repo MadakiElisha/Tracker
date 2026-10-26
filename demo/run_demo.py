@@ -128,9 +128,9 @@ def fnum(v, d=0.0):
 class ActorMover(threading.Thread):
     """Moves the sprinter and car in Gazebo (wall-clock, 30 Hz). `send` is injectable so tests need no simulator."""
 
-    def __init__(self, send, rate=30.0, hide_traffic=True):
+    def __init__(self, send, rate=30.0, hide_traffic=True, clock=time.monotonic):
         super().__init__(daemon=True)
-        self.send, self.dt = send, 1.0 / rate
+        self.send, self.dt, self.clock = send, 1.0 / rate, clock
         self.hide_traffic, self._hide_pending = hide_traffic, True
         self.seg, self.t_go = None, None
         self.stop_ev = threading.Event()
@@ -144,14 +144,14 @@ class ActorMover(threading.Thread):
 
     def go(self):
         with self.lock:
-            self.t_go = time.monotonic()
+            self.t_go = self.clock()
 
     def run(self):
         while not self.stop_ev.is_set():
             with self.lock:
                 seg, t_go = self.seg, self.t_go
             if seg is not None and self.send is not None:
-                t_move = -1.0 if t_go is None else time.monotonic() - t_go
+                t_move = -1.0 if t_go is None else self.clock() - t_go
                 if self.hide_traffic and self._hide_pending:
                     self._hide_pending = False
                     for name, (x, y, z, yaw) in sp.parked_hidden_poses().items():
@@ -198,6 +198,15 @@ class Show:
         self.tail = None
         self.mover = None
         self.last_lock_cmd = 0.0
+        self.simclock = None
+
+    def now(self):
+        """Sim time when available (the targets and the drone share it), else wall clock."""
+        if self.simclock is not None:
+            t = self.simclock.now()
+            if t is not None:
+                return t
+        return time.monotonic()
 
     # -- plumbing -----------------------------------------------------
     def cmd(self, line):
@@ -292,9 +301,9 @@ class Show:
             if self.mover:
                 self.mover.go()
             self.set(phase="chasing", target_speed=seg["speed"])
-            t0, dur = time.monotonic(), seg["run_s"] * scale
-            while time.monotonic() - t0 < dur and not self.abort.is_set():
-                self.set(progress=(time.monotonic() - t0) / dur)
+            t0, dur = self.now(), seg["run_s"] * scale
+            while self.now() - t0 < dur and not self.abort.is_set():
+                self.set(progress=(self.now() - t0) / dur)
                 self.refresh()
                 self.check_alive()
                 if not self.status["locked"]:
@@ -397,6 +406,8 @@ def main(argv=None):
     ap.add_argument("--use-running-sim", action="store_true", help="do not start the simulator (already running)")
     ap.add_argument("--keep-traffic", action="store_true",
                     help="leave the parked background cars in the road scene (default: hidden, the tracker may lock onto them)")
+    ap.add_argument("--wall-clock", action="store_true",
+                    help="move targets by the wall clock (old behaviour; only right if the simulator runs at real time)")
     ap.add_argument("--headless", action="store_true", help="no tracker window (still records the video)")
     ap.add_argument("--no-open", action="store_true", help="do not open the live page / report in the browser")
     ap.add_argument("--live-port", type=int, default=8090)
@@ -487,7 +498,19 @@ def main(argv=None):
 
         if args.mode == "sim" and not args.test_stack:
             try:
-                show.mover = ActorMover(gz_sender(), hide_traffic=not args.keep_traffic)
+                if not args.wall_clock:
+                    sys.path.insert(0, str(ROOT / "sim"))
+                    from sim_clock import SimClock
+                    show.simclock = SimClock()
+                    time.sleep(1.5)
+                    r = show.simclock.rtf()
+                    say(f"simulator real-time factor {r:.2f}" if r is not None else "simulator clock not available: using wall clock")
+                    if r is not None and r < 0.9:
+                        say("WARNING: the simulator runs slower than real time. Targets follow SIM time so they stay consistent "
+                            "with the drone, but the tracker gets fewer frames per simulated second. Close other GPU/CPU users.")
+                    if show.simclock.now() is None:
+                        show.simclock = None
+                show.mover = ActorMover(gz_sender(), hide_traffic=not args.keep_traffic, clock=show.now)
             except ImportError:
                 raise RuntimeError("Gazebo Python bindings missing: sudo apt install python3-gz-transport13")
             show.mover.start()          # idle (sends nothing) until the first segment: targets stay where the world put them
