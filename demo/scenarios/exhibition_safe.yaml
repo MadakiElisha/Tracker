@@ -1,6 +1,7 @@
 # Conservative exhibition show: moderate speeds only. This is the default until a segment has passed rehearsal.
+# Each segment names a profile: the tracker switches in flight (gains and speed cap suit that target).
 name: Drone Tracker exhibition (reliable set)
-profile: vehicle          # fallback; each segment below names its own profile (switched in flight)
+profile: pedestrian       # fallback only
 scene: highway            # stock Iris; no extra model to build
 gap_m: 10
 lock_timeout_s: 25
@@ -13,21 +14,24 @@ segments:
     run_s: 40
     note: "Steady follow of a walking person."
   - name: "Jogger 4 m/s + hidden-target recovery"
-    profile: runner
+    profile: jogger
     actor: person
     speed: 4
+    accel: 2.0
     run_s: 40
     vanish_after_s: 20
     vanish_for_s: 1.5
     note: "The target disappears for 1.5 s: the drone coasts and re-identifies it."
+  - name: "Car 5 m/s"
+    profile: vehicle_slow
+    actor: car
+    speed: 5
+    accel: 1.5
+    run_s: 35
   - name: "Car 8 m/s"
-    profile: vehicle_sim
+    profile: vehicle_slow
     actor: car
     speed: 8
+    accel: 1.5
     run_s: 40
-  - name: "Car 12 m/s + lane change"
-    profile: vehicle_sim
-    actor: car
-    speed: 12
-    run_s: 40
-    lane_change_s: 12
+    note: "Stretch segment: keep only if it passed rehearsal."

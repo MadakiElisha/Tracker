@@ -211,6 +211,19 @@ profiles:
       z: {mode: altitude, target_altitude: 6.0}
       feedforward: {enabled: true}
       setpoint_area_by_class: {0: 0.003, 1: 0.003}
+  jogger:                      # jogger / slow runner, up to ~5 m/s: cap close to target speed + gentle slew = less lean (offline model)
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 7.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.4}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 7.0}
+      max_accel: 3.0               # m/s^2 slew on the forward command
+      reverse_limit: 3.0
+      z: {mode: altitude, target_altitude: 6.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {0: 0.003, 1: 0.003}
   vehicle:                     # cars / vans / trucks / buses, up to ~16 m/s
     camera: {gimbal: false}
     flight: {max_forward_speed: 16.0, target_altitude: 10.0, max_altitude: 40.0}
@@ -231,6 +244,19 @@ profiles:
       latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
       smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
       pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 10.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {3: 0.005, 4: 0.005, 5: 0.005, 8: 0.005}
+  vehicle_slow:                # slow cars (<= ~8 m/s): cap close to the target speed and gentle command slew = less lean, target stays in frame (offline model)
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 11.0, target_altitude: 10.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 0.2}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 11.0}
+      max_accel: 3.0               # m/s^2 slew on the forward command
       reverse_limit: 4.0
       z: {mode: altitude, target_altitude: 10.0}
       feedforward: {enabled: true}
