@@ -1,4 +1,6 @@
 
+<div align="center">
+
 # 🎯 Drone Tracker
 ### Autonomous Multi-Class Target Detection, Locking, and Follow System
 
@@ -25,13 +27,13 @@ https://github.com/user-attachments/assets/f46b534b-2e52-4799-8fc5-a2ddc32986d9
 A complete autonomous drone follow-me system that detects, locks on to, and follows
 any designated target — persons, cars, motorcycles, buses, or trucks — with high
 precision and occlusion resilience. Built to run on a companion computer aboard an
-FPV drone, interfacing directly with ArduPilot, PX4, iNav, or Betaflight flight
-controllers via MAVLink or MSP.
+FPV drone, commanding an ArduPilot flight controller over MAVLink
+(PX4, iNav and Betaflight backends are planned, not implemented).
 
-This is not a toy tracker. It is a full perception-to-control pipeline designed
-for real deployment.
+This is a full perception-to-control pipeline designed for real deployment.
+**Status:** validated in unit tests, an offline closed-loop model and Gazebo + ArduPilot SITL runs;
+not yet flown on hardware. Earlier iterations of the code live in `legacy/`.
 
-Heads-up: You will find quite some duplicate files here and there. Those came about during dev. May come in handy for you.
 ---
 
 ## Key Features
@@ -42,10 +44,11 @@ Heads-up: You will find quite some duplicate files here and there. Those came ab
 - **Occlusion handling** — Kalman filter prediction keeps tracking through temporary disappearances
 - **Three target assignment methods** — RC switch (CH7), GCS browser tap-to-lock, OpenCV window click
 - **CH9 class filter** — 3-position RC switch cycles between Person / Vehicle / Any
-- **FC-agnostic architecture** — single abstraction layer supports ArduPilot, PX4, iNav, Betaflight
+- **FC abstraction layer** — ArduPilot today; PX4, iNav and Betaflight planned
 - **Watchdog failsafe** — zero-velocity hover triggered automatically if tracker stream dies
 - **Browser GCS** — live annotated video + tap-to-lock from any device on the network
-- **Hardware auto-detection** — switches between TensorRT (Jetson) / HailoRT (RPi5) / PyTorch (PC)
+- **Mission profiles** — pedestrian, jogger, runner, vehicle, motorcycle, highway; switchable in flight
+- **Re-ID and dropout coasting** — the lock survives short detection gaps and tracker ID changes
 
 ---
 
@@ -74,7 +77,7 @@ Heads-up: You will find quite some duplicate files here and there. Those came ab
 │      │                                                           │
 │      ▼                                                           │
 │  FC Abstraction Layer                                            │
-│  (ArduPilot │ PX4 │ iNav │ Betaflight)                          │
+│  (ArduPilot; PX4 / iNav / Betaflight planned)                   │
 │      │                                                           │
 └──────┼──────────────────────────────────────────────────────────┘
        │ MAVLink (UART or UDP)
@@ -88,10 +91,10 @@ Heads-up: You will find quite some duplicate files here and there. Those came ab
 
 | Platform | Inference | FPS | Latency |
 |----------|-----------|-----|---------|
-| Dev PC (SITL) | PyTorch CPU/CUDA | 10-80 FPS | varies |
+| Dev PC (SITL) | PyTorch CPU/CUDA | 19 FPS measured in Gazebo | ~0.3 s end to end |
 | Jetson Orin Nano | TensorRT FP16 | 80-120 FPS | 8-12ms |
 | Jetson Orin NX | TensorRT FP16 | 120-180 FPS | 5-8ms |
-| RPi 5 + Hailo-8L | HailoRT INT8 | 30-45 FPS | 22-33ms |
+| RPi 5 + AI HAT+ 26 TOPS (Hailo-8) | HailoRT INT8 | to be measured | to be measured |
 
 ---
 
@@ -113,7 +116,7 @@ Tracker/
 ├── model_download.py      # Fetches the VisDrone YOLO11n weights (visdrone_yolo11n.pt)
 ├── tracker_logger.py      # Logging helpers
 ├── inference_backend.py   # Hardware auto-detection (Jetson/RPi5/PC)
-├── tests/                 # 172 tests: pytest tests
+├── tests/                 # 291 tests: python3 -m pytest tests -q
 ├── sim/                   # launch_sim.sh, move_target.py, add_camera_to_iris.py, worlds/, params/
 ├── scripts/setup_python_env.sh
 ├── deployment/            # TensorRT / Hailo export
@@ -190,10 +193,10 @@ See full deployment guides in `/docs`:
 
 - **[Jetson Orin Nano/NX →](docs/PHASE_6A_JETSON.md)** JetPack setup, TensorRT export,
   CSI camera, UART FC, autostart
-- **[RPi 5 + Hailo-8L →](docs/PHASE_6B_RPI5_HAILO.md)** Hailo driver, HEF export,
+- **[RPi 5 + AI HAT+ →](docs/PHASE_6B_RPI5_HAILO.md)** Hailo driver, HEF export,
   Picamera2, UART FC, autostart
 
-### One-command hardware detection
+### Hardware detection (not yet used by `tracker.py`; Hailo inference is being wired in)
 
 ```python
 from inference_backend import detect_platform, open_camera

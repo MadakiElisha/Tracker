@@ -1,6 +1,6 @@
 # Setup on a fresh Ubuntu 24.04 PC
 
-Tested pieces: the Python code and unit tests (172 tests). NOT yet verified end to end by the
+Tested pieces: the Python code and unit tests (291 tests). NOT yet verified end to end by the
 author: Gazebo/SITL install steps below follow the upstream docs, and the live closed loop is
 still to be run (see `SIM_VALIDATION.md`). If a step fails, the upstream docs win.
 
@@ -16,7 +16,7 @@ git checkout production-hardening      # until it is merged into main
 ```bash
 bash scripts/setup_python_env.sh
 source venv/bin/activate
-python3 -m pytest tests -q             # expect: 172 passed
+python3 -m pytest tests -q             # expect: 291 passed
 ```
 The script creates the venv with `--system-site-packages` (required so Python can see the
 Gazebo bindings installed by apt), installs `requirements.txt`, downloads the VisDrone model

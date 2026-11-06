@@ -1,4 +1,4 @@
-> **Status update (latest build):** config-driven PID, safety supervisor, hardened FC layer, run logging/analyzer, offline closed-loop model, Gazebo camera patch and `gz:` source are implemented; 172 tests pass. NOT yet done: live Gazebo end-to-end run, VisDrone `best.pt` download/test, real hardware. See docs/SIM_VALIDATION.md. Earlier status statements below may be stale.
+> **Status update (Nov 2026):** config-driven PID, safety supervisor, hardened FC layer (ArduPilot only; PX4 raises NotImplementedError), run logging and analyzers, offline closed-loop model, mission profiles, re-ID and dropout coasting, Gazebo highway scenario and the exhibition demo launcher are implemented; 291 tests pass. Gazebo runs have been flown (walker, runner, car). NOT yet done: Hailo inference in `tracker.py`, Pi camera (CSI) source, HITL on the Pi, real hardware. Corrections to the text below: the Raspberry Pi AI HAT+ 26 TOPS carries a **Hailo-8** (the 13 TOPS version carries the Hailo-8L), and HEF files are compiled per chip; the **IMX477 is a rolling-shutter sensor** (the IMX296 is the global-shutter option). See docs/SIM_VALIDATION.md.
 
 # DRONE TRACKER SYSTEM
 ## Executive Summary, Hardware Specification & Use Case Reference
@@ -225,7 +225,7 @@ is far more capable. The IMX500 AI chip is simply unused.
 
 ---
 
-#### OPTION 2 — Arducam IMX477 Global Shutter ⭐ RECOMMENDED FOR JETSON
+#### OPTION 2 — Arducam IMX477 (rolling shutter; see correction at top)
 
 | Specification | Value |
 |---------------|-------|
@@ -241,7 +241,7 @@ is far more capable. The IMX500 AI chip is simply unused.
 
 **Why this:** The gold standard for Jetson-based machine vision on drones.
 Used by research groups and commercial developers on Jetson platforms.
-The IMX477 has excellent sensitivity and low rolling shutter (global).
+The IMX477 has excellent sensitivity but is a rolling-shutter sensor; prefer the IMX296 for flight.
 Available with multiple lens options for different FOV requirements.
 
 **Integration:** Connects to the CAM0 or CAM1 CSI port on the Jetson carrier

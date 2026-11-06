@@ -1,3 +1,5 @@
+> **Correction (Nov 2026):** this guide predates the current hardware. The AI HAT+ **26 TOPS is a Hailo-8**; the Hailo-8L is the 13 TOPS chip. HEF files are compiled for one chip and are not interchangeable, so export with the `hailo8` target. `tracker.py` does not yet run HailoRT inference; that work is in progress and this guide will be replaced.
+
 # Phase 6B — Raspberry Pi 5 + Hailo-8L AI Hat Deployment Guide
 # Drone Tracker — Full Hardware Deployment
 

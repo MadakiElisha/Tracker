@@ -188,5 +188,5 @@ often; fly a longer chase first.
 
 ## Verification ladder (one fix at a time)
 
-See the table in the README section of the last reply; commands: `sim/move_highway.py --vanish-every 12 --vanish-for 1.5`
+Verify one change at a time, scoring each run with `analyze_run.py`. To provoke dropouts on demand: `sim/move_highway.py --vanish-every 12 --vanish-for 1.5`
 hides the target on a schedule so dropout coasting and re-ID can be tested on demand.
