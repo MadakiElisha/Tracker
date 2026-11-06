@@ -40,6 +40,7 @@ from tracker_logger  import setup_logging, get_logger
 from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
 from profiles        import apply_profile
+from model_select    import resolve_model, apply_camera_preset
 from class_vote      import ClassVote
 from reid            import ReID
 from fc_interface5   import FCInterface
@@ -418,7 +419,11 @@ def main():
     parser.add_argument('--fc',      default=cfg['fc'].get('type', 'ardupilot'))
     parser.add_argument('--connect', default=cfg['fc'].get('connection', '127.0.0.1:14550'))
     parser.add_argument('--source',  default=str(cfg['video'].get('source', '0')),
-                        help='Camera index or video file path')
+                        help='Camera index, video file, gz:/topic (Gazebo) or csi:N (Pi ribbon camera)')
+    parser.add_argument('--model',   default=None,
+                        help='Override model: a .pt file or a *_hailo_model/ folder (Hailo HEF export)')
+    parser.add_argument('--camera',  default=cfg.get('camera', {}).get('sensor'),
+                        help='Camera preset from config.yaml `camera.sensors:` (sets field of view and CSI settings)')
     parser.add_argument('--profile', default=cfg.get('active_profile'),
                         help='Mission profile from config.yaml `profiles:` '
                              f"({', '.join(sorted((cfg.get('profiles') or {})))})")
@@ -432,6 +437,15 @@ def main():
     parser.add_argument('--record', default=None, metavar='PATH',
                         help='Write the annotated video to this file. Off unless given.')
     args = parser.parse_args()
+    if args.camera:
+        try:
+            cfg = apply_camera_preset(cfg, args.camera)
+        except ValueError as e:
+            log.error("%s", e)
+            sys.exit(2)
+        log.info("Camera preset '%s': hfov %.1f deg, pitch %.1f deg",
+                 args.camera, cfg['camera']['hfov_deg'], cfg['camera'].get('pitch_deg', 0.0))
+
     cfg_all = cfg                       # keeps the `profiles:` table for runtime switching (demo `profile` command)
     if args.profile:
         try:
@@ -499,12 +513,14 @@ def main():
 
     # -- model ------------------------------------------------------------
     from ultralytics import YOLO
-    model_path = cfg['model']['path']
-    if not Path(model_path).exists():
-        log.error("Model file not found: %s  (run: python3 model_download.py)", model_path)
+    try:
+        model_path, backend = resolve_model(cfg['model'], args.model)
+    except FileNotFoundError as e:
+        log.error("%s", e)
         sys.exit(1)
-    model = YOLO(model_path)
-    log.info("Model loaded: %s", model_path)
+    # task given for the Hailo folder (no .pt metadata to infer it from); .pt files know their task
+    model = YOLO(model_path, task='detect') if backend == 'hailo' else YOLO(model_path)
+    log.info("Model loaded: %s (backend: %s)", model_path, backend)
 
     cam = cfg.get('camera', {})
     pid_cfg = dict(cfg['pid'])
@@ -541,7 +557,16 @@ def main():
 
     # -- video ------------------------------------------------------------
     src = int(args.source) if str(args.source).isdigit() else args.source
-    if isinstance(src, str) and src.startswith('gz:'):
+    if isinstance(src, str) and (src == 'csi' or src.startswith('csi:')):
+        try:
+            from csi_camera import CsiCamera, parse_csi_spec
+            cap = CsiCamera(parse_csi_spec(src), fw, fh, cfg['video'].get('fps', 30),
+                            cfg.get('camera', {}).get('csi'))
+        except Exception as e:
+            log.error("csi: source failed (%s). On the Pi: sudo apt install python3-picamera2, "
+                      "venv with --system-site-packages; check rpicam-hello --list-cameras.", e)
+            sys.exit(2)
+    elif isinstance(src, str) and src.startswith('gz:'):
         try:
             from gz_camera import GzCamera
             cap = GzCamera(src[3:] or '/drone/camera')
@@ -574,7 +599,7 @@ def main():
             if cap is not None:
                 ret, frame = cap.read()
                 if not ret:
-                    if isinstance(src, str) and not just_rewound:
+                    if isinstance(src, str) and not getattr(cap, 'is_live', False) and not just_rewound:
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)    # loop a clip
                         just_rewound = True
                         continue

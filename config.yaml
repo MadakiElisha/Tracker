@@ -10,6 +10,8 @@ model:
   source: "dronefreak/visdrone-yolov11n"  # HuggingFace repo
   conf_threshold: 0.35          # lower than COCO because VisDrone targets are small
   iou_threshold: 0.45           # NMS overlap threshold
+  backend: auto                 # auto | hailo | pytorch. auto = Hailo NPU when /dev/hailo0 exists and hailo_path is there
+  hailo_path: "visdrone_yolo11n_hailo_model"   # folder written by deployment/export_hailo.py (contains the .hef)
 
 # --- Video ---
 video:
@@ -181,6 +183,25 @@ camera:
   pitch_deg: 20.0              # mount pitch below the horizon
   sync_lag_s: 0.06             # frame age minus telemetry age: tilt/altitude are looked up at (now - this); tune if the chase rocks
   gimbal: false                # true = camera is stabilised against body tilt (recommended above ~10 m/s)
+  sensor: null                 # camera preset below (--camera NAME); null = the values above (Gazebo camera)
+  csi:                         # Pi ribbon camera (--source csi:0), used by csi_camera.py
+    fps: 30
+    max_exposure_us: 3000      # fixed short shutter against motion blur; 0 = full auto exposure
+    lens_position: 0.0         # autofocus sensors only (IMX519): focus locked, dioptres, 0.0 = infinity
+  # Horizontal field of view at 640x480 (4:3). hfov_deg drives the yaw/pitch scaling and the tilt
+  # correction, so it MUST match the real lens. Values marked CONFIRM assume the vendor FOV is diagonal.
+  sensors:
+    gazebo:
+      hfov_deg: 90.0
+    imx296_m12_96:             # global shutter, M12 96 deg lens: the flight camera
+      hfov_deg: 83.3           # CONFIRM (96 deg diagonal on 1456x1088)
+      pitch_deg: 20.0
+    imx519_78:                 # rolling shutter + autofocus (locked): interim flight camera
+      hfov_deg: 66.3           # CONFIRM (78.5 deg diagonal on 4:3); 78.5 if the spec is horizontal
+      pitch_deg: 20.0
+    imx477_12mm:               # rolling shutter, 12 mm telephoto: bench tests only, too narrow to follow
+      hfov_deg: 29.4
+      pitch_deg: 20.0
 
 # --- Mission profiles (python3 tracker.py --profile NAME) ---
 # Opt-in overrides merged onto the values above. Validated in the offline closed-loop model

@@ -111,6 +111,8 @@ Tracker/
 ├── gcs_server.py          # Browser view + tap-to-lock (token-protected)
 ├── mouse_lock.py          # OpenCV click-to-lock
 ├── gz_camera.py           # Gazebo camera source (--source gz:/drone/camera)
+├── csi_camera.py          # Pi ribbon camera source (--source csi:0), focus locked, short shutter
+├── model_select.py        # Hailo HEF vs .pt selection, camera presets (--camera)
 ├── run_logger.py          # Per-frame CSV run log
 ├── analyze_run.py         # PASS/FAIL scoring of a run log
 ├── model_download.py      # Fetches the VisDrone YOLO11n weights (visdrone_yolo11n.pt)
@@ -193,10 +195,16 @@ See full deployment guides in `/docs`:
 
 - **[Jetson Orin Nano/NX →](docs/PHASE_6A_JETSON.md)** JetPack setup, TensorRT export,
   CSI camera, UART FC, autostart
-- **[RPi 5 + AI HAT+ →](docs/PHASE_6B_RPI5_HAILO.md)** Hailo driver, HEF export,
-  Picamera2, UART FC, autostart
+- **[RPi 5 + AI HAT+ 26 TOPS →](docs/PHASE_6B_RPI5_HAILO.md)** setup script, VisDrone → Hailo-8 export,
+  ribbon camera, UART FC
 
-### Hardware detection (not yet used by `tracker.py`; Hailo inference is being wired in)
+### Model and camera selection
+
+`tracker.py` loads the Hailo export (`visdrone_yolo11n_hailo_model/`) automatically when `/dev/hailo0`
+exists, else the `.pt` file (`config.yaml` `model.backend`, or `--model`). `--source csi:0` opens a Pi
+ribbon camera; `--camera imx296_m12_96 | imx519_78 | imx477_12mm` sets the lens field of view.
+
+### Legacy hardware detection helper
 
 ```python
 from inference_backend import detect_platform, open_camera
@@ -213,8 +221,13 @@ model_path, platform = detect_platform()
 # On Jetson (TensorRT):
 python3 deployment/export_tensorrt.py
 
-# On dev PC or RPi (Hailo HEF):
-python3 deployment/export_hailo.py
+# VisDrone -> Hailo-8 HEF, on the dev PC (Hailo DFC; see docs/PHASE_6B_RPI5_HAILO.md):
+bash scripts/setup_hailo_dfc.sh ~/Downloads/hailo_dataflow_compiler-*.whl
+source venv-hailo/bin/activate && python3 deployment/export_hailo.py
+
+# On the Pi: setup, then measure speed on the Hailo chip with the ribbon camera
+bash scripts/setup_pi.sh
+python3 scripts/hailo_selftest.py --source csi:0 --camera imx519_78
 ```
 
 ---
