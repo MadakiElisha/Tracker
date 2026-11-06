@@ -48,23 +48,6 @@
       </link>
     </model>
 
-    <model name="moving_target">
-      <pose>10 0 0.9 0 0 0</pose>
-      <link name="body">
-        <inertial><mass>1</mass></inertial>
-        <collision name="collision">
-          <geometry><box><size>0.6 0.6 1.8</size></box></geometry>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>0.6 0.6 1.8</size></box></geometry>
-          <material>
-            <ambient>0.9 0.1 0.1 1</ambient>
-            <diffuse>0.9 0.1 0.1 1</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
-
     <model name="wall">
       <static>true</static>
       <pose>5 0 1.5 0 0 0</pose>
@@ -82,22 +65,153 @@
       </link>
     </model>
 
-    <model name="vehicle_target">
-      <pose>-15 5 0.75 0 0 0</pose>
-      <link name="body">
-        <inertial><mass>1</mass></inertial>
-        <collision name="collision">
-          <geometry><box><size>4 2 1.5</size></box></geometry>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>4 2 1.5</size></box></geometry>
-          <material>
-            <ambient>0.1 0.1 0.9 1</ambient>
-            <diffuse>0.1 0.1 0.9 1</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
+    <!-- ===== Realistic targets from Gazebo Fuel (CC0). First load downloads ~100 MB; run sim/fetch_models.sh first. =====
+         Names below are moved by sim/move_target.py. -->
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Walking%20person</uri>
+      <name>moving_target</name>
+      <static>true</static>
+      <pose>20 0 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Casual%20female</uri>
+      <name>moving_person2</name>
+      <static>true</static>
+      <pose>15 8 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Pickup</uri>
+      <name>vehicle_target</name>
+      <static>true</static>
+      <pose>0 -15 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/SUV</uri>
+      <name>moving_suv</name>
+      <static>true</static>
+      <pose>-10 15 0 0 0 0.0</pose>
+    </include>
+    <!-- ===== Static scene (never moved) ===== -->
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Hatchback</uri>
+      <name>parked_hatchback_0</name>
+      <static>true</static>
+      <pose>25 -6 0 0 0 1.57</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Hatchback</uri>
+      <name>parked_hatchback_1</name>
+      <static>true</static>
+      <pose>25 -9 0 0 0 1.57</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Bus</uri>
+      <name>parked_bus_2</name>
+      <static>true</static>
+      <pose>30 -25 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/SUV</uri>
+      <name>parked_suv_3</name>
+      <static>true</static>
+      <pose>12 -22 0 0 0 0.3</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Standing%20person</uri>
+      <name>standing_person_0</name>
+      <static>true</static>
+      <pose>15 6 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Standing%20person</uri>
+      <name>standing_person_1</name>
+      <static>true</static>
+      <pose>16 7 0 0 0 0.5</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Standing%20person</uri>
+      <name>standing_person_2</name>
+      <static>true</static>
+      <pose>14 -4 0 0 0 1.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Standing%20person</uri>
+      <name>standing_person_3</name>
+      <static>true</static>
+      <pose>28 10 0 0 0 1.5</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction%20Cone</uri>
+      <name>cone_0</name>
+      <static>true</static>
+      <pose>18.0 -3 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction%20Cone</uri>
+      <name>cone_1</name>
+      <static>true</static>
+      <pose>19.5 -3 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction%20Cone</uri>
+      <name>cone_2</name>
+      <static>true</static>
+      <pose>21.0 -3 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction%20Cone</uri>
+      <name>cone_3</name>
+      <static>true</static>
+      <pose>22.5 -3 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction%20Cone</uri>
+      <name>cone_4</name>
+      <static>true</static>
+      <pose>24.0 -3 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction%20Cone</uri>
+      <name>cone_5</name>
+      <static>true</static>
+      <pose>25.5 -3 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Oak%20tree</uri>
+      <name>tree_0</name>
+      <static>true</static>
+      <pose>35 15 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Oak%20tree</uri>
+      <name>tree_1</name>
+      <static>true</static>
+      <pose>35 -15 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Oak%20tree</uri>
+      <name>tree_2</name>
+      <static>true</static>
+      <pose>10 25 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Oak%20tree</uri>
+      <name>tree_3</name>
+      <static>true</static>
+      <pose>-5 -25 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Oak%20tree</uri>
+      <name>tree_4</name>
+      <static>true</static>
+      <pose>40 0 0 0 0 0.0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Oak%20tree</uri>
+      <name>tree_5</name>
+      <static>true</static>
+      <pose>22 22 0 0 0 0.0</pose>
+    </include>
 
     <include>
       <uri>model://iris_with_ardupilot</uri>

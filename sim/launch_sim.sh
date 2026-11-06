@@ -1,14 +1,40 @@
 #!/bin/bash
 # =============================================================
 # Drone Tracker — Full Simulation Launcher
-# Usage: ./launch_sim.sh [ardupilot|px4]
+# Usage: ./launch_sim.sh [ardupilot|px4] [scene]
+#   scene (optional, default = the original small world, unchanged):
+#     highway       2 km road + fast SITL limits (stock Iris)
+#     highway-fast  same, with the stronger-thrust quad made by sim/make_fast_quad.py
 # =============================================================
 
 FC=${1:-ardupilot}
+SCENE=${2:-default}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+WORLD_FILE="$SCRIPT_DIR/worlds/tracker_world.sdf"
+PARAM_FILE="$SCRIPT_DIR/params/ardupilot_tracker.param"
+case "$SCENE" in
+    default) ;;
+    highway|highway-fast)
+        WORLD_FILE="$SCRIPT_DIR/worlds/highway_world.sdf"
+        if [ "$SCENE" = "highway-fast" ]; then
+            WORLD_FILE="$SCRIPT_DIR/worlds/highway_world_fast.sdf"
+        fi
+        if [ ! -f "$WORLD_FILE" ]; then
+            echo "[ERROR] $WORLD_FILE not found."
+            echo "  Generate it: python3 $SCRIPT_DIR/make_highway_world.py" \
+                 "$([ "$SCENE" = highway-fast ] && echo '--drone fast_quad_with_ardupilot --out '"$WORLD_FILE")"
+            exit 1
+        fi
+        # tracker params first, fast limits after (later lines win)
+        PARAM_FILE="$(mktemp /tmp/ardupilot_merged_XXXX.param)"
+        cat "$SCRIPT_DIR/params/ardupilot_tracker.param" "$SCRIPT_DIR/params/ardupilot_fast.param" > "$PARAM_FILE"
+        ;;
+    *) echo "[ERROR] unknown scene '$SCENE' (use: default | highway | highway-fast)"; exit 1 ;;
+esac
+
 echo "=============================================="
-echo " Drone Tracker Simulation — FC: $FC"
+echo " Drone Tracker Simulation — FC: $FC, scene: $SCENE"
 echo "=============================================="
 
 cleanup() {
@@ -39,7 +65,7 @@ if [ "$FC" = "ardupilot" ]; then
     export GZ_SIM_RESOURCE_PATH="$HOME/ardupilot_gazebo/models:$HOME/ardupilot_gazebo/worlds:$GZ_SIM_RESOURCE_PATH"
     export GZ_SIM_SYSTEM_PLUGIN_PATH="$HOME/ardupilot_gazebo/build:$GZ_SIM_SYSTEM_PLUGIN_PATH"
 
-    gz sim -r "$SCRIPT_DIR/worlds/tracker_world.sdf" &
+    gz sim -r "$WORLD_FILE" &
     GZ_PID=$!
 
     # ----------------------------------------------------------
@@ -66,9 +92,9 @@ if [ "$FC" = "ardupilot" ]; then
             exit 1
         fi
 
-        if [ $WAIT -ge 60 ]; then
+        if [ $WAIT -ge 180 ]; then
             echo ""
-            echo "[ERROR] Gazebo world did not start after 60s."
+            echo "[ERROR] Gazebo world did not start after 180s (first run downloads models: run sim/fetch_models.sh)."
             cleanup
             exit 1
         fi
@@ -81,13 +107,19 @@ if [ "$FC" = "ardupilot" ]; then
     # STAGE 3: Now start SITL.
     # ----------------------------------------------------------
     echo "[STAGE 3/3] Starting ArduPilot SITL..."
+    export PATH="$PATH:$HOME/ardupilot/Tools/autotest"
+    if ! command -v sim_vehicle.py >/dev/null 2>&1; then
+        echo "[ERROR] sim_vehicle.py not found. Is ArduPilot cloned at ~/ardupilot?"
+        cleanup
+        exit 1
+    fi
     cd ~/ardupilot
     
     sim_vehicle.py \
         -v ArduCopter \
         -f gazebo-iris \
         --model JSON \
-        --add-param-file="$SCRIPT_DIR/params/ardupilot_tracker.param" \
+        --add-param-file="$PARAM_FILE" \
         --console \
         --no-rebuild \
         --out=udp:127.0.0.1:14550 \
@@ -135,6 +167,11 @@ if [ "$FC" = "ardupilot" ]; then
     # ----------------------------------------------------------
     # CHANGE 2: Hand standard input over to MAVProxy instead of 'wait'
     # ----------------------------------------------------------
-    fg %"sim_vehicle.py"
+    if [ -n "$DEMO_NONINTERACTIVE" ]; then
+        # demo/run_demo.py starts this script without a terminal: nothing to hand control to, just stay alive
+        wait $SITL_PID
+    else
+        fg %"sim_vehicle.py"
+    fi
 
 fi

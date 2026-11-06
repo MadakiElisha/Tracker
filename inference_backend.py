@@ -11,7 +11,7 @@
    RPi 5 + Hailo-8L     → HailoRT .hef     (NPU INT8)
    Dev PC / other       → PyTorch .pt       (CPU/CUDA)
 
- Usage in tracker2bi.py:
+ Usage in tracker.py:
    from inference_backend import detect_platform, open_camera, read_frame
    model_path, platform = detect_platform()
    model = YOLO(model_path)

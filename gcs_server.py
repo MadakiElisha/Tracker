@@ -25,8 +25,13 @@ from flask import Flask, Response, request, jsonify
 
 
 class GCSServer:
-    def __init__(self, port=8080, frame_w=640, frame_h=480):
+    def __init__(self, port=8080, frame_w=640, frame_h=480,
+                 jpeg_quality=70, fps_cap=25, token='', host='0.0.0.0'):
         self.port    = port
+        self.host    = host
+        self.token   = token or ''
+        self.jpeg_quality = int(jpeg_quality)
+        self.frame_period = 1.0 / max(1, fps_cap)
         self.frame_w = frame_w
         self.frame_h = frame_h
 
@@ -62,6 +67,7 @@ class GCSServer:
                     <img id="feed" src="/stream">
                 </div>
                 <script>
+                    const TOKEN = new URLSearchParams(location.search).get('token') || '';
                     const img = document.getElementById('feed');
                     const status = document.getElementById('status');
                     img.addEventListener('click', function(e) {{
@@ -73,7 +79,7 @@ class GCSServer:
                                   ({self.frame_h} / rect.height));
                         fetch('/tap', {{
                             method: 'POST',
-                            headers: {{'Content-Type':'application/json'}},
+                            headers: {{'Content-Type':'application/json', 'X-Token': TOKEN}},
                             body: JSON.stringify({{x: x, y: y}})
                         }}).then(r => r.json()).then(d => {{
                             status.innerText = 'Tap sent: (' + x + ', ' + y + ')';
@@ -91,8 +97,18 @@ class GCSServer:
 
         @self.app.route('/tap', methods=['POST'])
         def tap():
-            data = request.get_json()
-            x, y = int(data['x']), int(data['y'])
+            # Anyone who can reach this port can pick the drone's target, so an
+            # optional shared token is supported (gcs.token in config.yaml).
+            if self.token and request.headers.get('X-Token', '') != self.token \
+                    and request.args.get('token', '') != self.token:
+                return jsonify({'status': 'forbidden'}), 403
+            data = request.get_json(silent=True)
+            try:
+                x, y = int(data['x']), int(data['y'])
+            except (TypeError, KeyError, ValueError):
+                return jsonify({'status': 'bad request: need integer x, y'}), 400
+            if not (0 <= x <= self.frame_w and 0 <= y <= self.frame_h):
+                return jsonify({'status': 'bad request: outside frame'}), 400
             with self._tap_lock:
                 self._tap = (x, y)
             return jsonify({'status': 'ok', 'x': x, 'y': y})
@@ -104,12 +120,12 @@ class GCSServer:
 
             if frame is not None:
                 ok, jpeg = cv2.imencode('.jpg', frame,
-                                        [cv2.IMWRITE_JPEG_QUALITY, 70])
+                                        [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
                 if ok:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' +
                            jpeg.tobytes() + b'\r\n')
-            time.sleep(0.04)   # ~25 FPS stream cap
+            time.sleep(self.frame_period)
 
     def update_frame(self, frame):
         """Call this every loop iteration with the annotated frame."""
@@ -125,13 +141,13 @@ class GCSServer:
 
     def start(self):
         def _run():
-            self.app.run(host='0.0.0.0', port=self.port,
+            self.app.run(host=self.host, port=self.port,
                          debug=False, use_reloader=False,
                          threaded=True)
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
         print(f"[GCS_SERVER] Running on http://0.0.0.0:{self.port}")
-        print(f"[GCS_SERVER] Open from Windows browser at:")
+        print("[GCS_SERVER] Open from Windows browser at:")
         print(f"             http://<WSL2-IP>:{self.port}")
 
 

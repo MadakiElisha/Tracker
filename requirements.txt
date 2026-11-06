@@ -1,28 +1,24 @@
-# ============================================================
-# Drone Tracker — Python Dependencies
-# Dev / PC / SITL Environment
-# ============================================================
-# Install: pip install -r requirements.txt
-
-# Core vision and inference
+# Drone Tracker — dev / PC dependencies (Ubuntu 24.04, Python 3.12)
 ultralytics>=8.3.0
 opencv-python>=4.8.0
 numpy>=1.24.0,<2.0.0
-scipy>=1.11.0
+scipy
+lap               # ByteTrack matching; ultralytics would otherwise auto-install it at first run
+pymavlink
+pyserial
+future            # needed by pymavlink
+flask
+waitress
+pyyaml
+huggingface_hub
+pytest
+pytest-mock
 
-# Multi-object tracking
-boxmot>=10.0.0
-supervision>=0.18.0
+# Optional: only for the standalone dev script perception.py
+# boxmot
+# supervision
 
-# MAVLink and flight controller
-pymavlink>=2.4.40
-pyserial>=3.5
-
-# GCS browser server
-flask>=3.0.0
-
-# Async (for PX4 backend)
-mavsdk>=1.4.0
-
-# Utilities
-future>=0.18.3
+# Gazebo camera + move_target.py use the Gazebo Python bindings, which come
+# from apt (NOT pip) and are only visible in a venv created with
+# --system-site-packages:
+#   sudo apt install python3-gz-transport13 python3-gz-msgs10

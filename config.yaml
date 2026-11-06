@@ -1,0 +1,300 @@
+# ============================================================
+# Drone Tracker — Master Configuration File
+# All tunable parameters live here. Edit this file to tune
+# behaviour without touching any source code.
+# ============================================================
+
+# --- Model & Detection ---
+model:
+  path: "visdrone_yolo11n.pt"   # written by model_download.py
+  source: "dronefreak/visdrone-yolov11n"  # HuggingFace repo
+  conf_threshold: 0.35          # lower than COCO because VisDrone targets are small
+  iou_threshold: 0.45           # NMS overlap threshold
+
+# --- Video ---
+video:
+  frame_width: 640
+  frame_height: 480
+  fps: 30
+  source: "0"                 # camera index or video file; --source overrides
+
+# --- VisDrone Class Definitions ---
+# These are VisDrone class IDs — completely different from COCO.
+# Do NOT use COCO IDs (0=person, 2=car etc) with this model.
+classes:
+  targets:
+    0: "pedestrian"
+    1: "people"
+    3: "car"
+    4: "van"
+    5: "truck"
+    8: "bus"
+    9: "motor"
+  # RC CH9 filter groups
+  groups:
+    any:     [0, 1, 3, 4, 5, 8, 9]
+    person:  [0, 1]
+    vehicle: [3, 4, 5, 8, 9]
+  # BGR colours per class ID
+  colors:
+    0: [0, 255, 0]       # pedestrian → green
+    1: [0, 200, 100]     # people     → teal
+    3: [255, 100, 0]     # car        → blue-orange
+    4: [255, 160, 0]     # van        → lighter orange
+    5: [0, 80, 255]      # truck      → red
+    8: [128, 0, 255]     # bus        → purple
+    9: [0, 200, 255]     # motor      → yellow
+
+# --- Tracking ---
+tracking:
+  max_lost_frames: 60          # frames before lock is dropped
+  tracker_config: "bytetrack.yaml"
+  lost_decay_half_life_s: 0.15 # commands halve every 0.15 s while the locked target is unseen
+  reid_warn_threshold: 0.60    # conf below this triggers [RE-ID?] warning
+  coast_hold_s: 0.0            # keep the last command this long when the target is briefly unseen (0 = decay at once)
+  reid:                        # pick the target back up under a new track id (appearance + position + size)
+    enabled: true
+    timeout_s: 6.0             # search this long before releasing the lock
+    confirm_frames: 3
+  class_vote_frames: 60        # setpoint class = most common class on this lock over N frames (stops car/van/truck flips)
+
+# --- PID Controller ---
+pid:
+  # Yaw axis — horizontal centering
+  yaw:
+    kp: 1.2
+    ki: 0.02
+    kd: 0.15
+    output_limit: 1.0          # max rad/s
+    deadzone: 0.03             # fraction of frame width
+
+  # Pitch axis — forward/backward distance hold.
+  # distance_mode "range": error is the RELATIVE range error, sqrt(setpoint/area)-1
+  # (see pid_controller2.py). kp is m/s per 100% range error.
+  distance_mode: "range"       # "range" (default) | "area" (legacy, saturates)
+  max_range_error: 5.0         # clamp for very distant / tiny targets
+  forward_gate:                # don't close distance while target is near a frame edge
+    enabled: true
+    x_start: 0.20              # |err_x| above this starts slowing the approach
+    x_full: 0.45               # ...and stops it entirely here
+    y_start: 0.22              # was 0.25/0.45: with a sluggish airframe + latency the drone coasted
+    y_full: 0.42               # in and the target slid out of the bottom of the frame (tuned in the model)
+  pitch:
+    kp: 4.0                    # m/s per 100% relative range error. Tuned in the closed-loop model against
+                               # the sim log (was kp 3.0/ki 0.1 -> 36% of frames within +-20% range).
+                               # kp >= 5 lost the target under 200 ms latency + sluggish airframe.
+    ki: 1.0
+    kd: 0.1                    # was 0.2: the derivative amplified detector box jitter into +-0.7 m/s
+                               # forward-command swings on a parked target (creep check failed at 48%)
+    i_limit_frac: 0.5          # integral may contribute at most 50% of output_limit
+    output_limit: 3.0          # max m/s forward/back
+    deadzone: 0.05             # 5% of the desired range
+
+  # Z axis — altitude / vertical centering
+  z:
+    kp: 1.5
+    ki: 0.01
+    kd: 0.2
+    output_limit: 1.5          # max m/s climb/descend
+    deadzone: 0.04             # fraction of frame height
+
+  # Shared settings
+  setpoint_area: 0.02          # fallback: target fills 2% of frame at the desired distance
+  max_dt: 0.2                  # s; cap dt so a stale timestamp can't blow up I/D terms
+  # Per-class follow distance (fraction of frame area). Classes not listed
+  # fall back to setpoint_area. STARTING VALUES — tune in sim, then outdoors.
+  setpoint_area_by_class:
+    0: 0.010                   # pedestrian  (~5 m standoff)
+    1: 0.010                   # people
+    3: 0.020                   # car         (~10 m)
+    4: 0.025                   # van
+    5: 0.040                   # truck
+    8: 0.050                   # bus
+    9: 0.010                   # motor
+  smooth_alpha: 0.4            # exponential smoothing on command outputs
+  drift_cutoff: 0.05           # zero commands below this magnitude
+
+# --- Flight ---
+flight:
+  target_altitude: 10.0        # metres AGL for takeoff
+  min_altitude: 3.0            # m AGL — tracker never commands descent below this
+  max_altitude: 30.0           # m AGL — tracker never commands climb above this
+  max_forward_speed: 3.0       # m/s — hard cap on forward/back speed sent to the FC
+  max_yaw_rate: 1.0            # rad/s — hard cap on yaw rate sent to the FC
+
+# --- FC Interface ---
+fc:
+  type: "ardupilot"          # ardupilot (px4 not implemented yet)
+  connection: "127.0.0.1:14550"  # serial e.g. /dev/ttyAMA0 on the drone
+  baud: 921600                 # serial only
+  connect_timeout_s: 15        # wait for the autopilot heartbeat (3 s cap with --no-fly)
+  watchdog_timeout: 0.5        # seconds before zero-velocity hover triggered
+  telemetry_rate_hz: 10        # requested telemetry stream rate
+  rc_cal_frames: 10            # frames to calibrate RC baseline before edge detection
+
+# --- RC Channel Mapping ---
+rc:
+  lock_channel: 7              # CH7 rising edge → lock largest target
+  release_channel: 8           # CH8 rising edge → release lock
+  filter_channel: 9            # CH9 position → class filter
+  high_threshold: 1700         # PWM above this = HIGH
+  low_threshold: 1300          # PWM below this = LOW (for 3-pos switch)
+
+# --- GCS Server ---
+gcs:
+  host: "0.0.0.0"              # use the hotspot/ethernet IP or 127.0.0.1 on the drone
+  port: 8080
+  token: ""                    # shared secret for tap-to-lock; EMPTY = anyone on the network can lock. Set before flying.
+  jpeg_quality: 70             # stream quality (lower = less bandwidth)
+  stream_fps_cap: 25           # max stream FPS to browser
+
+# --- Logging ---
+logging:
+  level: "INFO"                # DEBUG | INFO | WARNING | ERROR
+  file: "logs/tracker.log"     # set to null to disable file logging
+  max_bytes: 5242880           # 5MB per log file
+  backup_count: 3              # keep 3 rotated log files
+  console: true                # also print to terminal
+
+# --- Safety supervisor ---
+# Every rule below ends in HOVER, RTL, or releasing control to the pilot.
+safety:
+  video_loss_hover_s: 0.5      # no new frame for this long -> zero velocity
+  video_loss_rtl_s: 5.0        # ...and this long -> return to launch
+  link_loss_warn_s: 1.0        # no FC telemetry for this long -> warn + hover
+  link_loss_abort_s: 5.0       # ...and this long -> stop commanding, release lock
+  battery_warn_v: 0.0          # volts; 0 disables (set per pack, e.g. 3.5 * cells)
+  battery_rtl_v: 0.0           # volts; 0 disables
+  guided_mode_id: 4            # ArduCopter GUIDED; any other mode = pilot has control
+  takeoff_timeout_s: 30.0      # abort the climb wait after this long
+  mode_timeout_s: 5.0          # GUIDED must be confirmed within this
+  arm_timeout_s: 15.0          # arming must be confirmed within this (pre-arm/EKF)
+
+# --- Run log (CSV, one row per vision frame) ---
+run_log:
+  enabled: true
+  dir: "logs/runs"
+
+# --- Camera ---
+camera:
+  hfov_deg: 90.0               # must match the camera (sim: 90; see sim/add_camera_to_iris.py)
+  pitch_deg: 20.0              # mount pitch below the horizon
+  sync_lag_s: 0.06             # frame age minus telemetry age: tilt/altitude are looked up at (now - this); tune if the chase rocks
+  gimbal: false                # true = camera is stabilised against body tilt (recommended above ~10 m/s)
+
+# --- Mission profiles (python3 tracker.py --profile NAME) ---
+# Opt-in overrides merged onto the values above. Validated in the offline closed-loop model
+# (python3 tests/usecases.py), NOT yet on real hardware. Each profile pairs a speed cap with a
+# matched altitude and follow distance: the slant range must exceed altitude / sin(camera elevation
+# limit), otherwise the target would have to sit below the drone. With a fixed camera the drone's own
+# tilt (30-40 deg at speed) moves the target in the image; the controller corrects for it using the
+# flight controller's attitude. A gimbal still gives more margin (see docs/SIM_VALIDATION.md).
+profiles:
+  pedestrian:                  # walking / jogging, up to ~4 m/s; fixed camera is acceptable
+    flight: {max_forward_speed: 4.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.3}
+    pid:
+      pitch: {kp: 4.0, ki: 0.2, kd: 0.1, i_limit_frac: 0.8, output_limit: 4.0}
+      reverse_limit: 2.0
+      z: {mode: altitude, target_altitude: 6.0}
+      feedforward: {enabled: false}   # fixed camera: feed-forward noise hurts at walking speed
+      setpoint_area_by_class: {0: 0.003, 1: 0.003}
+  runner:                      # sprinter / cyclist, up to ~10 m/s
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 10.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.4}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 10.0}
+      reverse_limit: 3.0
+      z: {mode: altitude, target_altitude: 6.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {0: 0.003, 1: 0.003}
+  jogger:                      # jogger / slow runner, up to ~5 m/s: cap close to target speed + gentle slew = less lean (offline model)
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 7.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.4}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 7.0}
+      max_accel: 3.0               # m/s^2 slew on the forward command
+      reverse_limit: 3.0
+      z: {mode: altitude, target_altitude: 6.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {0: 0.003, 1: 0.003}
+  vehicle:                     # cars / vans / trucks / buses, up to ~16 m/s
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 16.0, target_altitude: 10.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 0.2}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 10.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {3: 0.004, 4: 0.005, 5: 0.008, 8: 0.010}
+  vehicle_sim:                 # same as `vehicle`, but one follow distance for car/van/truck/bus: the Gazebo pickup is classified as all three
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 16.0, target_altitude: 10.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 0.2}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 16.0}
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 10.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {3: 0.005, 4: 0.005, 5: 0.005, 8: 0.005}
+  vehicle_slow:                # slow cars (<= ~8 m/s): cap close to the target speed and gentle command slew = less lean, target stays in frame (offline model)
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 11.0, target_altitude: 10.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 1.0} # real sim dropouts last ~0.8 s; offline model: 0.2 loses the car, 1.0-1.5 keeps it
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 11.0}
+      max_accel: 3.0               # m/s^2 slew on the forward command
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 10.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {3: 0.005, 4: 0.005, 5: 0.005, 8: 0.005}
+  motorcycle:                  # motorbikes / scooters / cyclists, up to ~20 m/s
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 20.0, target_altitude: 8.0}
+    tracking: {coast_hold_s: 0.4}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 20.0}
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 8.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {9: 0.0025}
+  highway_runner:              # sprinter on a long straight, up to ~10 m/s (cap must exceed target speed to close the gap)
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 14.0, target_altitude: 6.0}
+    tracking: {coast_hold_s: 0.6}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 14.0}
+      reverse_limit: 3.0
+      z: {mode: altitude, target_altitude: 6.0}
+      feedforward: {enabled: true}
+      setpoint_area_by_class: {0: 0.003, 1: 0.003}
+  highway:                     # car on a highway, up to ~20 m/s; needs SITL params sim/params/ardupilot_fast.param
+    camera: {gimbal: false}
+    flight: {max_forward_speed: 24.0, target_altitude: 8.0, max_altitude: 40.0}
+    tracking: {coast_hold_s: 0.6}
+    pid:
+      latency_comp: {seconds: 0.3}   # shift range error ahead by the camera+detector+link delay (needs feedforward on)
+      smooth_alpha: 0.6          # steadier speed command (less rocking); costs ~30 ms of lag
+      pitch: {kp: 4.0, ki: 0.1, kd: 0.1, i_limit_frac: 0.8, output_limit: 24.0}
+      reverse_limit: 4.0
+      z: {mode: altitude, target_altitude: 8.0}
+      feedforward: {enabled: true}
+      # only the car (class 3) is validated at 20 m/s; the others are scaled guesses
+      setpoint_area_by_class: {3: 0.008, 4: 0.010, 5: 0.014, 8: 0.016}

@@ -1,3 +1,5 @@
+> **Correction (Nov 2026):** this guide predates the current hardware. The AI HAT+ **26 TOPS is a Hailo-8**; the Hailo-8L is the 13 TOPS chip. HEF files are compiled for one chip and are not interchangeable, so export with the `hailo8` target. `tracker.py` does not yet run HailoRT inference; that work is in progress and this guide will be replaced.
+
 # Phase 6B — Raspberry Pi 5 + Hailo-8L AI Hat Deployment Guide
 # Drone Tracker — Full Hardware Deployment
 
@@ -262,7 +264,7 @@ PYEOF
     # Expected: 30-45 FPS, 22-33ms latency
 
 ### 5.2 Update YOLO_MODEL in tracker
-    # In tracker2bi.py:
+    # In tracker.py:
     YOLO_MODEL = "yolo11n.hef"
     # No other code changes needed — Ultralytics handles HailoRT transparently
 
@@ -424,7 +426,7 @@ configures everything correctly before launching the tracker.
 
     echo "[START] FC connection: $FC_CONNECT"
 
-    python3 tracker2bi.py \
+    python3 tracker.py \
         --fc ardupilot \
         --connect "$FC_CONNECT" \
         ${1:---no-display}
