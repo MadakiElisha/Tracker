@@ -1,0 +1,143 @@
+"""csi_camera.CsiCamera against a fake Picamera2 (the real one only exists on a Pi)."""
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from csi_camera import CsiCamera, parse_csi_spec   # noqa: E402
+
+
+class FakePicam:
+    instances = []
+
+    def __init__(self, index, autofocus=True, fail_after=None, channels=3):
+        self.index = index
+        self.camera_controls = {"FrameRate": (1, 120), "ExposureTime": (1, 100000)}
+        if autofocus:
+            self.camera_controls.update({"AfMode": (0, 2), "LensPosition": (0.0, 15.0)})
+        self.controls_set = []
+        self.config = None
+        self.started = self.closed = False
+        self.n = 0
+        self.fail_after = fail_after
+        self.channels = channels
+        FakePicam.instances.append(self)
+
+    def create_video_configuration(self, main, buffer_count, controls):
+        return {"main": main, "buffer_count": buffer_count, "controls": controls}
+
+    def configure(self, cfg):
+        self.config = cfg
+
+    def set_controls(self, c):
+        self.controls_set.append(dict(c))
+
+    def start(self):
+        self.started = True
+
+    def capture_array(self, _name):
+        time.sleep(0.005)
+        self.n += 1
+        if self.fail_after is not None and self.n > self.fail_after:
+            raise RuntimeError("camera gone")
+        w, h = self.config["main"]["size"]
+        return np.full((h, w, self.channels), self.n % 255, dtype=np.uint8)
+
+    def stop(self):
+        self.started = False
+
+    def close(self):
+        self.closed = True
+
+
+def make(**kw):
+    def factory(index):
+        return FakePicam(index, **kw)
+    return factory
+
+
+def test_parse_spec():
+    assert parse_csi_spec("csi") == 0
+    assert parse_csi_spec("csi:") == 0
+    assert parse_csi_spec("csi:1") == 1
+
+
+def test_reads_bgr_frames_at_requested_size():
+    cam = CsiCamera(0, 640, 480, 30, {}, picamera_cls=make())
+    try:
+        ok, f = cam.read()
+        assert ok and f.shape == (480, 640, 3) and f.dtype == np.uint8
+        fake = FakePicam.instances[-1]
+        assert fake.config["main"] == {"size": (640, 480), "format": "RGB888"}
+        assert fake.config["controls"]["FrameRate"] == 30.0
+        assert cam.is_live and cam.isOpened() and cam.set(0, 0) is False
+    finally:
+        cam.release()
+    assert FakePicam.instances[-1].closed
+
+
+def test_autofocus_is_locked_at_infinity_by_default():
+    cam = CsiCamera(0, 640, 480, 30, {}, picamera_cls=make(autofocus=True))
+    cam.release()
+    assert {"AfMode": 0, "LensPosition": 0.0} in FakePicam.instances[-1].controls_set
+
+
+def test_fixed_focus_sensor_gets_no_af_controls():
+    cam = CsiCamera(0, 640, 480, 30, {"lens_position": 2.0}, picamera_cls=make(autofocus=False))
+    cam.release()
+    assert all("AfMode" not in c for c in FakePicam.instances[-1].controls_set)
+
+
+def test_short_shutter_applied_only_when_configured():
+    cam = CsiCamera(0, 640, 480, 30, {"max_exposure_us": 3000}, picamera_cls=make())
+    cam.release()
+    assert {"ExposureTime": 3000} in FakePicam.instances[-1].controls_set
+    cam = CsiCamera(0, 640, 480, 30, {"max_exposure_us": 0}, picamera_cls=make())
+    cam.release()
+    assert all("ExposureTime" not in c for c in FakePicam.instances[-1].controls_set)
+
+
+def test_four_channel_frames_trimmed():
+    cam = CsiCamera(0, 320, 240, 30, {}, picamera_cls=make(channels=4))
+    try:
+        ok, f = cam.read()
+        assert ok and f.shape == (240, 320, 3)
+    finally:
+        cam.release()
+
+
+def test_read_returns_newest_frame_not_a_backlog():
+    cam = CsiCamera(0, 64, 48, 30, {}, picamera_cls=make())
+    try:
+        time.sleep(0.1)                       # ~20 frames captured meanwhile
+        ok, f = cam.read()
+        assert ok
+        assert f[0, 0, 0] >= 10               # not frame 1: the slot holds the latest
+        assert cam.frame_age() < 0.1
+    finally:
+        cam.release()
+
+
+def test_camera_failure_reports_no_frame_instead_of_stale():
+    cam = CsiCamera(0, 64, 48, 30, {}, picamera_cls=make(fail_after=2))
+    try:
+        time.sleep(0.15)
+        cam.read(timeout=0.01)                # drain whatever arrived before the failure
+        ok, frame = cam.read(timeout=0.1)
+        # the camera died: no fresh frame, never the last good one -> tracker treats it as video loss
+        assert ok is False and frame is None
+        assert cam.frame_age() > 0.1
+    finally:
+        cam.release()
+
+
+def test_missing_picamera2_gives_actionable_error():
+    import csi_camera
+    if csi_camera.Picamera2 is not None:
+        pytest.skip("running on a Pi")
+    with pytest.raises(ImportError, match="python3-picamera2"):
+        CsiCamera(0)
