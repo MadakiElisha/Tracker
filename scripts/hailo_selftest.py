@@ -43,6 +43,7 @@ def main() -> int:
     ap.add_argument('--camera', default=None, help='camera preset (config.yaml camera.sensors)')
     ap.add_argument('--frames', type=int, default=200)
     ap.add_argument('--min-fps', type=float, default=19.0)
+    ap.add_argument('--conf', type=float, default=None, help='override model.conf_threshold (e.g. 0.1 to see weak detections)')
     ap.add_argument('--save', default=None, help='write an annotated JPEG of the last frame here')
     args = ap.parse_args()
 
@@ -84,7 +85,7 @@ def main() -> int:
             import cv2
             frame = cv2.resize(frame, (w, h))
         t = time.monotonic()
-        r = model.track(frame, persist=True, verbose=False, conf=cfg['model']['conf_threshold'],
+        r = model.track(frame, persist=True, verbose=False, conf=args.conf if args.conf is not None else cfg['model']['conf_threshold'],
                         iou=cfg['model']['iou_threshold'], tracker=cfg['tracking']['tracker_config'])
         det_ms.append((time.monotonic() - t) * 1000.0)
         if t0 is None:
