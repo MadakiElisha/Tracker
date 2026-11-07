@@ -111,3 +111,32 @@ def test_imx519_preset_full_view_and_locked_focus():
     assert csi["sensor_size"] == [2328, 1748] and csi["vcm_focus"] == 1680
     assert csi["max_exposure_us"] == cfg["camera"]["csi"]["max_exposure_us"]   # base keys kept
     assert cfg["camera"]["csi"]["vcm_focus"] is None                          # sim/base untouched
+
+
+# ---- class mapping ------------------------------------------------------------------------------
+from model_select import ClassMap   # noqa: E402
+
+COCO = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck'}
+VIS = {0: 'pedestrian', 1: 'people', 2: 'bicycle', 3: 'car', 4: 'van', 5: 'truck', 6: 'tricycle',
+       7: 'awning-tricycle', 8: 'bus', 9: 'motor'}
+
+
+def test_visdrone_model_is_identity():
+    m = ClassMap(VIS)
+    assert m.identity and m.internal(8) == 8 and m.model_classes([0, 1, 3]) == [0, 1, 3]
+
+
+def test_coco_model_maps_by_name():
+    m = ClassMap(COCO)
+    assert not m.identity
+    assert m.internal(0) == 0 and m.internal(2) == 3 and m.internal(3) == 9
+    assert m.internal(5) == 8 and m.internal(7) == 5
+    assert m.internal(4) == -1                          # airplane: not a tracker class
+
+
+def test_coco_filter_groups_translate():
+    cfg = yaml.safe_load(open(ROOT / "config.yaml"))
+    m = ClassMap(COCO)
+    g = cfg["classes"]["groups"]
+    assert m.model_classes(g["person"]) == [0]                        # pedestrian+people -> person
+    assert m.model_classes(g["vehicle"]) == [2, 3, 5, 7]              # car, motorcycle, bus, truck (no van in COCO)

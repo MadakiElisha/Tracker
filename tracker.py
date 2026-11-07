@@ -40,7 +40,7 @@ from tracker_logger  import setup_logging, get_logger
 from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
 from profiles        import apply_profile
-from model_select    import resolve_model, apply_camera_preset
+from model_select    import resolve_model, apply_camera_preset, ClassMap
 from class_vote      import ClassVote
 from reid            import ReID
 from fc_interface5   import FCInterface
@@ -521,6 +521,8 @@ def main():
     # task given for the Hailo folder (no .pt metadata to infer it from); .pt files know their task
     model = YOLO(model_path, task='detect') if backend == 'hailo' else YOLO(model_path)
     log.info("Model loaded: %s (backend: %s)", model_path, backend)
+    class_map = ClassMap(getattr(model, 'names', None))
+    log.info("Model classes: %s", class_map.describe())
 
     cam = cfg.get('camera', {})
     pid_cfg = dict(cfg['pid'])
@@ -662,7 +664,7 @@ def main():
                     frame, persist=True, verbose=False,
                     conf=cfg['model']['conf_threshold'],
                     iou=cfg['model']['iou_threshold'],
-                    classes=active_classes,
+                    classes=class_map.model_classes(active_classes),
                     tracker=cfg['tracking']['tracker_config'])
             except Exception as e:
                 state.errors.record('inference', e)
@@ -674,8 +676,10 @@ def main():
                 boxes   = results[0].boxes.xyxy.cpu().numpy()
                 ids     = results[0].boxes.id.cpu().numpy().astype(int)
                 confs   = results[0].boxes.conf.cpu().numpy()
-                classes = results[0].boxes.cls.cpu().numpy().astype(int)
+                classes = [class_map.internal(c) for c in results[0].boxes.cls.cpu().numpy().astype(int)]
                 for i in range(len(ids)):
+                    if classes[i] < 0:
+                        continue                     # model class the tracker does not use
                     entry = [boxes[i][0], boxes[i][1], boxes[i][2], boxes[i][3],
                              ids[i], confs[i], classes[i]]
                     tracks.append(entry)

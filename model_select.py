@@ -79,3 +79,49 @@ def apply_camera_preset(cfg: dict, name: str) -> dict:
     out["camera"] = _merge(cam, preset)
     out["camera"]["sensor"] = name
     return out
+
+
+# ---- class mapping ------------------------------------------------------------------------------
+# The tracker's class ids (config.yaml `classes`, profiles, setpoints) are VisDrone ids. A model
+# trained on another dataset (stock COCO YOLO) is mapped onto them by class NAME, so the same
+# config, RC filter groups and distance setpoints work with either model.
+VISDRONE_IDS = {'pedestrian': 0, 'people': 1, 'bicycle': 2, 'car': 3, 'van': 4, 'truck': 5,
+                'tricycle': 6, 'awning-tricycle': 7, 'bus': 8, 'motor': 9}
+ALIASES = {'person': 'pedestrian', 'motorcycle': 'motor', 'motorbike': 'motor'}
+
+
+class ClassMap:
+    """model class id <-> tracker (VisDrone) class id."""
+
+    def __init__(self, model_names):
+        if not model_names:                 # unknown (stub models in tests): assume VisDrone ids
+            model_names = {i: n for n, i in VISDRONE_IDS.items()}
+        names = dict(model_names.items()) if hasattr(model_names, 'items') else dict(enumerate(model_names))
+        self.to_internal = {}
+        for mid, name in names.items():
+            key = ALIASES.get(str(name).lower(), str(name).lower())
+            if key in VISDRONE_IDS:
+                self.to_internal[int(mid)] = VISDRONE_IDS[key]
+        self.identity = all(self.to_internal.get(i) == i for i in range(10)) and len(names) == 10
+        self.from_internal = {}
+        for mid, iid in self.to_internal.items():
+            self.from_internal.setdefault(iid, []).append(mid)
+
+    def model_classes(self, internal_ids):
+        """Tracker class ids -> the model's ids, for the `classes=` filter (unknown ids dropped)."""
+        if self.identity:
+            return list(internal_ids)
+        out = []
+        for i in internal_ids:
+            out.extend(self.from_internal.get(int(i), []))
+        return sorted(set(out))
+
+    def internal(self, model_id: int) -> int:
+        """Model class id -> tracker id (-1 if the tracker has no such class)."""
+        return int(model_id) if self.identity else self.to_internal.get(int(model_id), -1)
+
+    def describe(self) -> str:
+        if self.identity:
+            return "VisDrone classes (no mapping)"
+        inv = {v: k for k, v in VISDRONE_IDS.items()}
+        return ", ".join(f"{m}->{inv[i]}" for m, i in sorted(self.to_internal.items()))
