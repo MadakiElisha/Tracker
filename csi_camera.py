@@ -8,8 +8,10 @@ isOpened(), read() -> (ok, BGR frame), set(), release().
 
 Works with any libcamera sensor (IMX296, IMX519, IMX477, ...). For tracking from
 a moving drone it:
-  * locks focus (autofocus hunting mid-flight blurs the target): lens at
-    infinity unless camera.csi.lens_position is given (dioptres, 0 = infinity)
+  * locks focus (autofocus hunting mid-flight blurs the target): through libcamera
+    (camera.csi.lens_position, dioptres, 0 = infinity) or, when libcamera has no AF
+    algorithm for the sensor, by driving the lens motor directly (camera.csi.vcm_focus)
+  * rotates the image 180 deg for an upside-down mount (camera.csi.rotate)
   * optionally fixes a short shutter (camera.csi.max_exposure_us); gain stays automatic
   * delivers frames already in BGR order at the size tracker.py asks for
 
@@ -19,6 +21,8 @@ tracker from a venv made with --system-site-packages (scripts/setup_pi.sh).
 
 from __future__ import annotations
 
+import glob
+import subprocess
 import threading
 import time
 
@@ -26,6 +30,31 @@ try:                                   # only exists on a Raspberry Pi
     from picamera2 import Picamera2    # type: ignore
 except Exception:                      # pragma: no cover - exercised on the Pi
     Picamera2 = None
+
+
+def _run(cmd):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+
+def set_vcm_focus(value: int, runner=_run, devices=None) -> str | None:
+    """Drive the lens motor directly through V4L2 (no libcamera AF needed).
+
+    Some IMX519 builds load the lens driver (focus_absolute on a v4l-subdev) but ship a tuning
+    file without an AF algorithm, so libcamera cannot move the lens. Find the subdev with
+    focus_absolute, set it, read it back. Returns the device used, or None if none was found.
+    Raises RuntimeError if the value does not stick.
+    """
+    for dev in sorted(devices if devices is not None else glob.glob('/dev/v4l-subdev*')):
+        r = runner(['v4l2-ctl', '-d', dev, '--list-ctrls'])
+        if r.returncode != 0 or 'focus_absolute' not in r.stdout:
+            continue
+        runner(['v4l2-ctl', '-d', dev, '--set-ctrl', f'focus_absolute={int(value)}'])
+        back = runner(['v4l2-ctl', '-d', dev, '--get-ctrl', 'focus_absolute'])
+        got = back.stdout.strip().rsplit(':', 1)[-1].strip() if back.returncode == 0 else ''
+        if got != str(int(value)):
+            raise RuntimeError(f"lens focus on {dev}: set {value}, read back {got or 'nothing'}")
+        return dev
+    return None
 
 
 def parse_csi_spec(spec: str) -> int:
@@ -46,8 +75,11 @@ class CsiCamera:
     is_live = True        # tracker.py: do not try to rewind a live camera
 
     def __init__(self, index: int = 0, width: int = 640, height: int = 480,
-                 fps: float = 30.0, cfg: dict | None = None, picamera_cls=None):
+                 fps: float = 30.0, cfg: dict | None = None, picamera_cls=None, focus_runner=None):
         cfg = dict(cfg or {})
+        self.rotate = int(cfg.get('rotate', 0) or 0)
+        if self.rotate not in (0, 180):
+            raise ValueError(f"camera.csi.rotate must be 0 or 180, got {self.rotate}")
         cls = picamera_cls or Picamera2
         if cls is None:
             raise ImportError("Picamera2 not available (sudo apt install python3-picamera2, "
@@ -62,6 +94,14 @@ class CsiCamera:
         self._cam.configure(config)
         self._apply_focus(cfg)
         self._cam.start()
+        self.focus_device = None
+        vcm = cfg.get('vcm_focus')
+        if vcm is not None:
+            # lens motor driven directly (IMX519 without a libcamera AF algorithm)
+            kw = {'runner': focus_runner} if focus_runner else {}
+            self.focus_device = set_vcm_focus(int(vcm), **kw)
+            if self.focus_device is None:
+                raise RuntimeError("camera.csi.vcm_focus is set but no lens motor (focus_absolute) was found")
         if self.max_exposure_us:
             self._limit_exposure()
         self._lock = threading.Lock()
@@ -105,6 +145,8 @@ class CsiCamera:
                 continue
             if arr is not None and arr.ndim == 3 and arr.shape[2] == 4:
                 arr = arr[:, :, :3]
+            if arr is not None and self.rotate == 180:
+                arr = arr[::-1, ::-1].copy()          # camera mounted upside down
             with self._lock:
                 self._frame = arr
                 self._frame_t = time.monotonic()

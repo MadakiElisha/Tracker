@@ -188,6 +188,8 @@ camera:
     fps: 30
     max_exposure_us: 3000      # fixed short shutter against motion blur; 0 = full auto exposure
     lens_position: 0.0         # autofocus sensors only (IMX519): focus locked, dioptres, 0.0 = infinity
+    vcm_focus: null            # lens motor value 0-4095 set directly via V4L2 (IMX519 with no libcamera AF); from the focus sweep
+    rotate: 0                  # 0 or 180: set 180 if the camera is mounted upside down (else yaw and climb invert)
   # Horizontal field of view at 640x480 (4:3). hfov_deg drives the yaw/pitch scaling and the tilt
   # correction, so it MUST match the real lens. Values marked CONFIRM assume the vendor FOV is diagonal.
   sensors:

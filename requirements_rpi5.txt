@@ -6,6 +6,7 @@
 # (sudo apt install hailo-all python3-picamera2). Do NOT pip-install numpy<2
 # here: the apt HailoRT and Picamera2 are built against the system numpy.
 
+# torch: install the CPU wheel first (setup_pi.sh does) or pip pulls ~3 GB of CUDA packages.
 # Detection + ByteTrack; 8.4.203+ runs *_hailo_model/ folders on the Hailo NPU.
 # Use the same Ultralytics version that exported the HEF on the PC.
 ultralytics>=8.4.203

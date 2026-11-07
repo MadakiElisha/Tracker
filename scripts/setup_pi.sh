@@ -37,7 +37,13 @@ fi
 # shellcheck disable=SC1091
 source venv/bin/activate
 pip install --upgrade pip
+# CPU-only PyTorch first: the default aarch64 wheel drags in ~3 GB of NVIDIA CUDA packages the Pi
+# cannot use. Ultralytics needs torch to load the model; detection runs on the Hailo.
+pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
 pip install -r requirements_rpi5.txt
+# pip's OpenCV would shadow the system build; the headless one avoids GUI/Qt clashes on the Pi.
+pip uninstall -y opencv-python >/dev/null 2>&1 || true
+pip install opencv-python-headless
 
 if [[ $UART -eq 1 ]]; then
   echo "== 3/5 GPIO UART for the flight controller (GPIO14 TX, GPIO15 RX -> /dev/ttyAMA0)"
@@ -67,10 +73,12 @@ elif hailortcli fw-control identify 2>/dev/null | grep -qi 'hailo'; then
 else
   echo "FAIL no Hailo device (reboot after the first install; check the HAT ribbon)"; ok=0
 fi
-if rpicam-hello --list-cameras 2>/dev/null | grep -q ':'; then
-  echo "PASS camera:"; rpicam-hello --list-cameras | sed -n '1,6p'
+CAMS="$(rpicam-hello --list-cameras 2>&1 || true)"
+if echo "$CAMS" | grep -qE '^[0-9]+ : '; then
+  echo "PASS camera:"; echo "$CAMS" | grep -E '^[0-9]+ : '
 else
-  echo "FAIL no camera listed (reboot if an overlay was just added; check the ribbon orientation)"; ok=0
+  echo "FAIL no camera listed (close any other camera program; reboot if an overlay was just added; check the ribbon):"
+  echo "$CAMS" | tail -3; ok=0
 fi
 python3 - <<'EOF' || ok=0
 import ultralytics, picamera2, hailo_platform, pymavlink, cv2, numpy
