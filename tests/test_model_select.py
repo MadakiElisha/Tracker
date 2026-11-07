@@ -86,7 +86,9 @@ def test_camera_presets(name, hfov):
     out = apply_camera_preset(cfg, name)
     assert out["camera"]["hfov_deg"] == hfov
     assert out["camera"]["sensor"] == name
-    assert out["camera"]["csi"] == cfg["camera"]["csi"]          # untouched keys survive
+    for k, v in cfg["camera"]["csi"].items():                    # base CSI keys survive the merge
+        assert k in out["camera"]["csi"]
+    assert out["camera"]["csi"]["fps"] == cfg["camera"]["csi"]["fps"]
     assert cfg["camera"]["hfov_deg"] == 90.0                     # input not mutated
 
 
@@ -101,3 +103,11 @@ def test_camera_preset_survives_profile():
     cfg = apply_camera_preset(yaml.safe_load(open(ROOT / "config.yaml")), "imx519_78")
     for prof in cfg["profiles"]:
         assert apply_profile(cfg, prof)["camera"]["hfov_deg"] == 66.3, prof
+
+
+def test_imx519_preset_full_view_and_locked_focus():
+    cfg = yaml.safe_load(open(ROOT / "config.yaml"))
+    csi = apply_camera_preset(cfg, "imx519_78")["camera"]["csi"]
+    assert csi["sensor_size"] == [2328, 1748] and csi["vcm_focus"] == 1640
+    assert csi["max_exposure_us"] == cfg["camera"]["csi"]["max_exposure_us"]   # base keys kept
+    assert cfg["camera"]["csi"]["vcm_focus"] is None                          # sim/base untouched

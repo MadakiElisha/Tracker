@@ -88,9 +88,16 @@ class CsiCamera:
         self._cam = cls(index)
         controls = {"FrameRate": float(cfg.get('fps', fps))}
         self.max_exposure_us = int(cfg.get('max_exposure_us', 0) or 0)
+        kw = {}
+        sensor = cfg.get('sensor_size')
+        if sensor:
+            # Force the sensor mode. Left to itself libcamera may pick a CROPPED mode (IMX519:
+            # 1920x1080 for a 4:3 request), which narrows the view the controller assumes.
+            kw['sensor'] = {"output_size": (int(sensor[0]), int(sensor[1]))}
+        self.sensor_size = tuple(sensor) if sensor else None
         config = self._cam.create_video_configuration(
             main={"size": (self.width, self.height), "format": "RGB888"},   # RGB888 is BGR in memory
-            buffer_count=4, controls=controls)
+            buffer_count=4, controls=controls, **kw)
         self._cam.configure(config)
         self._apply_focus(cfg)
         self._cam.start()

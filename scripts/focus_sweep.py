@@ -56,12 +56,18 @@ def main() -> int:
     ap.add_argument('--settle', type=float, default=0.4, help='seconds to wait after moving the lens')
     ap.add_argument('--frames', type=int, default=3, help='frames averaged per value')
     ap.add_argument('--save', action='store_true', help='keep one JPEG per value in focus_sweep/')
+    ap.add_argument('--sensor', default='2328x1748', help='sensor mode WxH (full view; "" = libcamera picks)')
     args = ap.parse_args()
 
     from picamera2 import Picamera2
     cam = Picamera2(args.camera)
-    cam.configure(cam.create_still_configuration(main={"size": (1280, 960), "format": "RGB888"}))
+    kw = {}
+    if args.sensor:
+        w, h = (int(x) for x in args.sensor.lower().split('x'))
+        kw['sensor'] = {"output_size": (w, h)}
+    cam.configure(cam.create_still_configuration(main={"size": (1280, 960), "format": "RGB888"}, **kw))
     cam.start()
+    print(f"[focus] sensor mode {args.sensor or 'auto'}")
     time.sleep(1.0)                         # let exposure settle
     save_dir = None
     if args.save:
@@ -88,11 +94,15 @@ def main() -> int:
             print(f"{v:>6} {results[v][0]:>10.1f} {results[v][1]:>11.0f}")
         best = max(results, key=lambda k: results[k][0])
         top, lum = results[best]
-        flat = top < 1.5 * float(np.median([r[0] for r in results.values()]))
-        print(f"\n[focus] best value {best}: sharpness {top:.1f}, brightness {lum:.0f}/255")
+        floor = float(np.median([r[0] for r in results.values()]))
+        ratio = top / max(floor, 1e-6)
+        print(f"\n[focus] best value {best}: sharpness {top:.1f} ({ratio:.0f}x the out-of-focus level), "
+              f"brightness {lum:.0f}/255")
+        # Absolute sharpness depends on the scene (sky, plain walls score low); a clear peak is
+        # what matters: in focus should be several times sharper than the defocused floor.
         if lum < 40:
             print("[focus] WARNING: scene too dark to judge focus; repeat in daylight")
-        elif top < 30 or flat:
+        elif ratio < 4:
             print("[focus] WARNING: no clear peak. Is the scene detailed and >10 m away? "
                   "Does the lens actually move (listen/look while it runs)?")
         else:

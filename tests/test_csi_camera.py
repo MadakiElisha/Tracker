@@ -27,8 +27,8 @@ class FakePicam:
         self.channels = channels
         FakePicam.instances.append(self)
 
-    def create_video_configuration(self, main, buffer_count, controls):
-        return {"main": main, "buffer_count": buffer_count, "controls": controls}
+    def create_video_configuration(self, main, buffer_count, controls, sensor=None):
+        return {"main": main, "buffer_count": buffer_count, "controls": controls, "sensor": sensor}
 
     def configure(self, cfg):
         self.config = cfg
@@ -231,3 +231,12 @@ def test_rotate_180_flips_both_axes():
 def test_rotate_rejects_other_angles():
     with pytest.raises(ValueError, match="0 or 180"):
         CsiCamera(0, 64, 48, 30, {"rotate": 90}, picamera_cls=make())
+
+
+def test_sensor_mode_forced_only_when_configured():
+    cam = CsiCamera(0, 64, 48, 30, {"sensor_size": [2328, 1748]}, picamera_cls=make())
+    cam.release()
+    assert FakePicam.instances[-1].config["sensor"] == {"output_size": (2328, 1748)}
+    cam = CsiCamera(0, 64, 48, 30, {}, picamera_cls=make())
+    cam.release()
+    assert FakePicam.instances[-1].config["sensor"] is None

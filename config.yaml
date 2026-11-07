@@ -187,6 +187,7 @@ camera:
   csi:                         # Pi ribbon camera (--source csi:0), used by csi_camera.py
     fps: 30
     max_exposure_us: 3000      # fixed short shutter against motion blur; 0 = full auto exposure
+    sensor_size: null          # [w, h] sensor mode to force (full field of view); set per camera preset
     lens_position: 0.0         # autofocus sensors only (IMX519): focus locked, dioptres, 0.0 = infinity
     vcm_focus: null            # lens motor value 0-4095 set directly via V4L2 (IMX519 with no libcamera AF); from scripts/focus_sweep.py
     rotate: 0                  # 0 or 180: set 180 if the camera is mounted upside down (else yaw and climb invert)
@@ -198,9 +199,12 @@ camera:
     imx296_m12_96:             # global shutter, M12 96 deg lens: the flight camera
       hfov_deg: 83.3           # CONFIRM (96 deg diagonal on 1456x1088)
       pitch_deg: 20.0
-    imx519_78:                 # rolling shutter + autofocus (locked): interim flight camera
-      hfov_deg: 66.3           # CONFIRM (78.5 deg diagonal on 4:3); 78.5 if the spec is horizontal
+    imx519_78:                 # rolling shutter, lens motor locked: interim flight camera
+      hfov_deg: 66.3           # 78.5 deg diagonal (spec sheet) on the full 4:3 sensor
       pitch_deg: 20.0
+      csi:
+        sensor_size: [2328, 1748]   # 2x2-binned FULL view; libcamera otherwise picks a cropped 1920x1080 mode
+        vcm_focus: 1640             # focus_sweep.py, 2026-11-07: peak 1600-1680 on two runs (>10 m scene)
     imx477_12mm:               # rolling shutter, 12 mm telephoto: bench tests only, too narrow to follow
       hfov_deg: 29.4
       pitch_deg: 20.0
