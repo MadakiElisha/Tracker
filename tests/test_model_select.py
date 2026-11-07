@@ -108,6 +108,6 @@ def test_camera_preset_survives_profile():
 def test_imx519_preset_full_view_and_locked_focus():
     cfg = yaml.safe_load(open(ROOT / "config.yaml"))
     csi = apply_camera_preset(cfg, "imx519_78")["camera"]["csi"]
-    assert csi["sensor_size"] == [2328, 1748] and csi["vcm_focus"] == 1640
+    assert csi["sensor_size"] == [2328, 1748] and csi["vcm_focus"] == 1680
     assert csi["max_exposure_us"] == cfg["camera"]["csi"]["max_exposure_us"]   # base keys kept
     assert cfg["camera"]["csi"]["vcm_focus"] is None                          # sim/base untouched

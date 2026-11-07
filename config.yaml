@@ -204,7 +204,7 @@ camera:
       pitch_deg: 20.0
       csi:
         sensor_size: [2328, 1748]   # 2x2-binned FULL view; libcamera otherwise picks a cropped 1920x1080 mode
-        vcm_focus: 1640             # focus_sweep.py, 2026-11-07: peak 1600-1680 on two runs (>10 m scene)
+        vcm_focus: 1680             # focus_sweep.py in this full-view mode, 2026-11-07: peak 1680, 15x out-of-focus level
     imx477_12mm:               # rolling shutter, 12 mm telephoto: bench tests only, too narrow to follow
       hfov_deg: 29.4
       pitch_deg: 20.0

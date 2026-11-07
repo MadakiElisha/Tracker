@@ -63,15 +63,23 @@ def main() -> int:
 
     det_ms, seen, n, t0, last = [], collections.Counter(), 0, None, None
     ids = set()
+    print(f"[selftest] camera open; first frame loads the model (can take 10-30 s on the CPU), "
+          f"then {args.frames} frames, progress every 25", flush=True)
+    last_ok = time.monotonic()
     while n < args.frames:
         ok, frame = cap.read()
         if not ok:
-            if not getattr(cap, 'is_live', False) and n == 0:
-                print("[selftest] FAIL no frames")
-                return 1
             if not getattr(cap, 'is_live', False):
+                if n == 0:
+                    print("[selftest] FAIL no frames")
+                    return 1
                 break
+            if time.monotonic() - last_ok > 5.0:
+                print("[selftest] FAIL camera stopped delivering frames for 5 s "
+                      "(another program using the camera? check: rpicam-hello --list-cameras)")
+                return 1
             continue
+        last_ok = time.monotonic()
         if frame.shape[1] != w or frame.shape[0] != h:
             import cv2
             frame = cv2.resize(frame, (w, h))
@@ -82,8 +90,13 @@ def main() -> int:
         if t0 is None:
             t0 = time.monotonic()          # first frame includes model warm-up; not counted
             det_ms.clear()
+            print(f"[selftest] model ready ({(t0 - t) :.1f} s warm-up); measuring...", flush=True)
         else:
             n += 1
+            if n % 25 == 0:
+                el = time.monotonic() - t0
+                print(f"[selftest]   {n}/{args.frames} frames, {n / el:.1f} fps so far, "
+                      f"seen: {dict(seen) or 'nothing yet'}", flush=True)
         b = r[0].boxes
         for c in b.cls.cpu().numpy().astype(int):
             seen[names.get(int(c), str(c))] += 1
