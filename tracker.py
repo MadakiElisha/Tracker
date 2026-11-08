@@ -459,7 +459,8 @@ def main():
     parser.add_argument('--fc',      default=cfg['fc'].get('type', 'ardupilot'))
     parser.add_argument('--connect', default=cfg['fc'].get('connection', '127.0.0.1:14550'))
     parser.add_argument('--source',  default=str(cfg['video'].get('source', '0')),
-                        help='Camera index, video file, gz:/topic (Gazebo) or csi:N (Pi ribbon camera)')
+                        help='Camera index, video file, gz:/topic (Gazebo), csi:N (Pi ribbon camera) '
+                             'or net:HOST:PORT (HITL: Gazebo frames relayed by sim/frame_relay.py)')
     parser.add_argument('--model',   default=None,
                         help='Override model: a .pt file or a *_hailo_model/ folder (Hailo HEF export)')
     parser.add_argument('--camera',  default=cfg.get('camera', {}).get('sensor'),
@@ -624,6 +625,11 @@ def main():
             log.error("csi: source failed (%s). On the Pi: sudo apt install python3-picamera2, "
                       "venv with --system-site-packages; check rpicam-hello --list-cameras.", e)
             sys.exit(2)
+    elif isinstance(src, str) and src.startswith('net:'):
+        from net_camera import NetCamera, parse_net_spec
+        host, port = parse_net_spec(src)
+        cap = NetCamera(host, port)
+        log.info("HITL: frames from the relay at %s:%d (sim/frame_relay.py on the PC).", host, port)
     elif isinstance(src, str) and src.startswith('gz:'):
         try:
             from gz_camera import GzCamera
