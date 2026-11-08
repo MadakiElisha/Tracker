@@ -166,8 +166,20 @@ class TrackerPID:
         self.z_edge = float(zc.get('image_edge', 0.30))       # |err_y| beyond this: image keeps target in view
         self.z_out_limit = float(zc.get('output_limit', 1.5))
 
-        self.setpoint_area = cfg.get('setpoint_area', 0.02)
-        self.setpoint_by_class = {int(k): float(v) for k, v in
+        # Field-of-view normalisation. Gains and area setpoints were tuned on a fov_ref_deg camera
+        # (Gazebo, 90 deg). On a narrower lens the same bearing is a larger fraction of the frame
+        # (yaw loop effectively hotter) and the same target at the same range has a larger box
+        # (drone hangs back). Express both as the reference camera would see them, so the tuning
+        # carries over to any lens: horizontal error x k, area setpoints / k^2,
+        # with k = tan(hfov/2) / tan(ref/2). Edge logic (forward gate, z image edge) stays in frame
+        # fractions on purpose: losing the target depends on the real frame edge.
+        self.camera_hfov_deg = float(cfg.get('camera_hfov_deg', 90.0))
+        ref = float(cfg.get('fov_ref_deg', 90.0))
+        self.fov_k = (math.tan(math.radians(self.camera_hfov_deg) / 2.0) /
+                      math.tan(math.radians(ref) / 2.0)) if cfg.get('fov_normalise', True) else 1.0
+        area_scale = 1.0 / (self.fov_k ** 2)
+        self.setpoint_area = float(cfg.get('setpoint_area', 0.02)) * area_scale
+        self.setpoint_by_class = {int(k): float(v) * area_scale for k, v in
                                   cfg.get('setpoint_area_by_class', {}).items()}
         # Forward-speed gating ("look before you go"): while the target sits
         # near the edge of the frame, do not close distance — let the yaw/Z
@@ -177,7 +189,6 @@ class TrackerPID:
         self.gate_x = (g.get('x_start', 0.20), g.get('x_full', 0.45))
         self.gate_y = (g.get('y_start', 0.25), g.get('y_full', 0.45))
         self.smooth_alpha = cfg.get('smooth_alpha', 0.4)
-        self.camera_hfov_deg = float(cfg.get('camera_hfov_deg', 90.0))
         tc = cfg.get('tilt', {}) or {}
         self.tilt_vertical = bool(tc.get('vertical', True))      # tilt-correct the vertical error / forward gate
         self.tilt_estimator = bool(tc.get('estimator', True))    # tilt-correct the target-speed estimator
@@ -267,7 +278,7 @@ class TrackerPID:
             ang = math.atan(error_y * frame_h / f_px) + tilt_rad      # angle below the camera axis, nominal frame
             error_y_ctrl = f_px * math.tan(max(-1.4, min(1.4, ang))) / frame_h
 
-        raw_yaw = self.yaw_pid.compute(error_x)
+        raw_yaw = self.yaw_pid.compute(error_x * self.fov_k)     # bearing as the reference camera sees it
         if self.z_mode == 'altitude' and alt_m is not None:
             # hold the commanded altitude; the image only intervenes when the target nears the
             # top/bottom edge (so a fast chase does not drift down to the altitude floor)

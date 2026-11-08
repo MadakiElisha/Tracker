@@ -459,6 +459,13 @@ def main():
         if cfg['flight']['max_forward_speed'] > 10.0 and not cfg.get('camera', {}).get('gimbal', False):
             log.warning("Profile '%s' flies above ~10 m/s without a stabilised camera: tilt "
                         "corrections have little margin left; a gimbal is recommended.", args.profile)
+        hfov = float(cfg.get('camera', {}).get('hfov_deg', 90.0))
+        if (hfov < 75.0 and cfg['flight']['max_forward_speed'] > 7.0
+                and not cfg.get('camera', {}).get('gimbal', False)):
+            log.warning("Camera hfov %.0f deg is narrow for profile '%s' (cap %.1f m/s): in the closed-loop "
+                        "model a fixed narrow lens loses targets above ~7 m/s (lean takes them out of "
+                        "frame). Use a wide lens (~83 deg) or a gimbal for vehicles.",
+                        hfov, args.profile, cfg['flight']['max_forward_speed'])
 
     fw, fh = cfg['video']['frame_width'], cfg['video']['frame_height']
     state = TrackerState()

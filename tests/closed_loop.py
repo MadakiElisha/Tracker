@@ -62,6 +62,7 @@ class Scenario:
     burst_frames: int = 0            # length of each burst (frames)
     tilt_lag_error_frames: int = 0   # tilt looked up this many frames off the true capture time (sync_lag_s mis-set)
     tilt_sync: bool = True           # False: controller sees the CURRENT tilt, not the tilt at frame capture (as on the real drone)
+    hfov_deg: float = HFOV_DEG       # camera horizontal field of view (Gazebo 90, IMX519 66.3)
     coast_hold_s: float = 0.0        # keep the last command this long when the target is unseen (tracker.coast_hold_s)
     lost_half_life_s: float = 0.15   # then decay with this half-life (tracking.lost_decay_half_life_s)
 
@@ -118,6 +119,17 @@ def bbox(cam, psi, pitch, tx, ty, th, tw, rng, noise):
 
 
 def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> Result:
+    global F_PX
+    saved = F_PX
+    F_PX = (W / 2) / math.tan(math.radians(scn.hfov_deg / 2))
+    pid_cfg = {**pid_cfg, 'camera_hfov_deg': scn.hfov_deg}
+    try:
+        return _run(scn, pid_cfg, setpoint_area)
+    finally:
+        F_PX = saved
+
+
+def _run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> Result:
     rng = random.Random(scn.seed)
     dt = 1.0 / scn.fps
     now = [0.0]

@@ -62,6 +62,11 @@ tracking:
 
 # --- PID Controller ---
 pid:
+  # Gains and area setpoints below were tuned on the 90 deg Gazebo camera. On another lens the
+  # controller converts bearing and box size to what a fov_ref_deg camera would see, so the same
+  # tuning holds the same real distance and turn response (pid_controller2.py, tests/test_fov.py).
+  fov_ref_deg: 90.0
+  fov_normalise: true
   # Yaw axis — horizontal centering
   yaw:
     kp: 1.2
