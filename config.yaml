@@ -177,7 +177,7 @@ safety:
   battery_rtl_v: 0.0           # volts; 0 disables
   guided_mode_id: 4            # ArduCopter GUIDED; any other mode = pilot has control
   leash_m: 150.0               # field: never fly further than this from home (where airborne began); 0 = off
-  leash_sim_m: 3000.0          # used instead when the video source is Gazebo (gz:...): highway world is 2 km
+  leash_sim_m: 3000.0          # used instead with a simulation source (gz:, or net: in HITL): highway world is 2 km
   leash_rtl_margin_m: 30.0     # drifted this far past the leash anyway -> RTL
   adopt_airborne_alt_m: 1.5    # pilot-launched flight: armed and above this = airborne (tracker acts only in GUIDED)
   takeoff_timeout_s: 30.0      # abort the climb wait after this long

@@ -528,12 +528,13 @@ def main():
         log.warning("FC unavailable; continuing in --no-fly mode without FC.")
         fc = None
 
-    # Leash: the field value, or a much larger one in Gazebo (the highway world is 2 km long)
-    sim_source = str(args.source).startswith('gz:')
+    # Leash: the field value, or a much larger one in simulation (the highway world is 2 km long).
+    # gz: = Gazebo on this machine; net: = Gazebo frames relayed to the Pi (hardware-in-the-loop).
+    sim_source = str(args.source).startswith(('gz:', 'net:'))
     sc = cfg['safety']
     sc['leash_active_m'] = float(sc.get('leash_sim_m', 0.0) if sim_source else sc.get('leash_m', 0.0))
     log.info("Leash: %s (%s).", f"{sc['leash_active_m']:.0f} m" if sc['leash_active_m'] > 0 else "off",
-             "Gazebo source: safety.leash_sim_m" if sim_source else "safety.leash_m")
+             "simulation source: safety.leash_sim_m" if sim_source else "safety.leash_m")
 
     fc_t = threading.Thread(target=fc_thread_fn, name="fc-thread", daemon=True,
                             args=(fc, state, cfg, args.no_fly, supervisor))
