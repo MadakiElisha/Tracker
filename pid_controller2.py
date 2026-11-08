@@ -189,6 +189,13 @@ class TrackerPID:
         self.gate_x = (g.get('x_start', 0.20), g.get('x_full', 0.45))
         self.gate_y = (g.get('y_start', 0.25), g.get('y_full', 0.45))
         self.smooth_alpha = cfg.get('smooth_alpha', 0.4)
+        # Minimum ground range: never fly TOWARD a target closer than this. Measured from the
+        # ground geometry (altitude, camera pitch + lean, where the box bottom sits in the image),
+        # not from box size, so a partly hidden target that looks small cannot pull the drone in.
+        self.min_range_m = float(cfg.get('min_range_m', 0.0) or 0.0)
+        self.min_range_by_class = {int(k): float(v) for k, v in (cfg.get('min_range_by_class', {}) or {}).items()}
+        self.camera_pitch_rad = math.radians(float(cfg.get('camera_pitch_deg', 20.0)))
+        self.min_range_active = False
         tc = cfg.get('tilt', {}) or {}
         self.tilt_vertical = bool(tc.get('vertical', True))      # tilt-correct the vertical error / forward gate
         self.tilt_estimator = bool(tc.get('estimator', True))    # tilt-correct the target-speed estimator
@@ -223,6 +230,15 @@ class TrackerPID:
     def from_config(cls, pid_cfg: dict,
                     clock: Callable[[], float] = time.monotonic):
         return cls(pid_cfg, clock)
+
+    def ground_range(self, y_bottom: float, frame_w: int, frame_h: int,
+                     alt_m: float, tilt_rad: float = 0.0) -> Optional[float]:
+        """Horizontal distance to where the box bottom meets flat ground, or None if not computable."""
+        f = (frame_w / 2.0) / math.tan(math.radians(self.camera_hfov_deg) / 2.0)
+        delta = self.camera_pitch_rad + tilt_rad + math.atan((y_bottom - frame_h / 2.0) / f)
+        if alt_m is None or alt_m < 1.0 or delta < math.radians(2.0) or delta > math.radians(89.0):
+            return None
+        return alt_m / math.tan(delta)
 
     def setpoint_for(self, class_id: Optional[int] = None) -> float:
         if class_id is not None and class_id in self.setpoint_by_class:
@@ -302,6 +318,13 @@ class TrackerPID:
         if self.estimator is not None:
             lim = self.pitch_pid.output_limit
             raw_vx = max(-lim, min(lim, raw_vx + self.ff_gain * v_t))
+        self.min_range_active = False
+        mr = self.min_range_by_class.get(class_id, self.min_range_m) if class_id is not None else self.min_range_m
+        if mr > 0.0 and raw_vx > 0.0 and alt_m:
+            d = self.ground_range(y2, frame_w, frame_h, alt_m, tilt_rad or 0.0)
+            if d is not None and d < mr:
+                raw_vx = 0.0                        # may still back off, never close in
+                self.min_range_active = True
         if self.gate_enabled and raw_vx > 0.0:      # only gate approaching, never retreat
             raw_vx *= (_ramp(abs(error_x), *self.gate_x) *
                        _ramp(abs(error_y_ctrl), *self.gate_y))

@@ -122,7 +122,7 @@ def run(scn: Scenario, pid_cfg: dict, setpoint_area: Optional[float] = None) -> 
     global F_PX
     saved = F_PX
     F_PX = (W / 2) / math.tan(math.radians(scn.hfov_deg / 2))
-    pid_cfg = {**pid_cfg, 'camera_hfov_deg': scn.hfov_deg}
+    pid_cfg = {**pid_cfg, 'camera_hfov_deg': scn.hfov_deg, 'camera_pitch_deg': scn.cam_pitch_deg}
     try:
         return _run(scn, pid_cfg, setpoint_area)
     finally:
