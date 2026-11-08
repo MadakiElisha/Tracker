@@ -1,0 +1,120 @@
+# ArduCopter parameters for the MVP airframe
+#   13" quad, 13x9x3 props, UAngel/E-Power 4115 650 kV, 6S 9000 mAh, ~3.0 kg all-up
+#   DAKEFPV H743 / H743 Pro, BLHeli_S 4-in-1 flashed with Bluejay (bidirectional DShot)
+#   HGLRC M100-PRO GPS + compass, ExpressLRS on SERIAL5, Raspberry Pi 5 tracker on SERIAL2
+#
+# Load ORDER (docs/ARDUPILOT_SETUP_13IN.md):
+#   1. Mandatory setup first (frame, accel, compass, radio, ESC/motor test).
+#   2. Mission Planner "Initial Tune Parameters" (13 in, 6S): it sets the gyro filter, rate
+#      filters, ATC_ACCEL_*_MAX and MOT_THST_EXPO for the prop size. This file does NOT set those.
+#   3. Then load this file (Config > Full Parameter List > Load from file > Compare / write).
+#   4. Bench checks marked VERIFY, then a hover, then AutoTune.
+#
+# Values marked ESTIMATE come from the motor datasheet and an assumed 3.0 kg; the first
+# hover log replaces them. Nothing here disables an arming or pre-arm check.
+
+# ---------------- frame and motors ----------------
+FRAME_CLASS,1           # quad
+FRAME_TYPE,1            # X, ArduPilot motor order. VERIFY with Motor Test: if the stack is wired in
+                        # Betaflight order use FRAME_TYPE 12 (BetaFlightX) instead of re-soldering
+MOT_PWM_TYPE,6          # DShot600 (Bluejay)
+SERVO_BLH_BDMASK,15     # bidirectional DShot on motors 1-4 -> real RPM for the notch filter
+SERVO_BLH_POLES,14      # 12N14P motors: 14 magnet poles
+MOT_SPIN_ARM,0.08       # VERIFY on the bench: lowest value where all 4 spin reliably when armed
+MOT_SPIN_MIN,0.12       # VERIFY: MOT_SPIN_ARM + ~0.03
+MOT_THST_HOVER,0.28     # ESTIMATE: 750 g per motor needed vs 2191 g at 50 % throttle -> ~28 %
+MOT_HOVER_LEARN,2       # learn and save the real hover throttle in flight
+MOT_BAT_VOLT_MAX,25.2   # 6S full (4.20 V/cell)
+MOT_BAT_VOLT_MIN,19.8   # 6S empty under load (3.30 V/cell); Li-ion pack: 18.0
+MOT_BAT_CURR_MAX,120    # A total. ESC rating unknown: 4 x 30 A is far above the MVP's needs
+                        # (~16 A hover) and below any normal 4-in-1. Raise after reading real current
+MOT_BAT_CURR_TC,5       # s, time constant of that limit
+
+# ---------------- notch filter on motor RPM (needs Bluejay + SERVO_BLH_BDMASK) ----------------
+INS_HNTCH_ENABLE,1
+INS_HNTCH_MODE,3        # ESC telemetry (bidirectional DShot RPM)
+INS_HNTCH_REF,1
+INS_HNTCH_FREQ,40       # Hz lower bound; hover is ~55-70 Hz (ESTIMATE); confirm with the FFT log
+INS_HNTCH_BW,20
+INS_HNTCH_ATT,40
+INS_HNTCH_HMNCS,3       # 1st and 2nd harmonics
+INS_HNTCH_OPTS,2        # one notch per motor
+INS_LOG_BAT_MASK,1      # batch-sample the gyro for the first hovers (FFT check), set 0 afterwards
+INS_LOG_BAT_OPT,4       # log both before and after the filters
+
+# ---------------- battery (ESC current sensor via the FC) ----------------
+BATT_MONITOR,4          # analog voltage + current (board default)
+BATT_CAPACITY,9000
+BATT_AMP_PERVLT,83.3    # board default; VERIFY: compare used mAh with the charger's "mAh put back"
+BATT_LOW_VOLT,21.0      # 3.50 V/cell under load (LiPo). Li-ion pack: 19.2
+BATT_CRT_VOLT,20.4      # 3.40 V/cell (LiPo). Li-ion pack: 18.6
+BATT_LOW_MAH,2700       # 30 % left -> low
+BATT_CRT_MAH,1800       # 20 % left -> critical
+BATT_LOW_TIMER,10
+BATT_FS_LOW_ACT,2       # low -> RTL
+BATT_FS_CRT_ACT,1       # critical -> land
+
+# ---------------- radio: ExpressLRS on SERIAL5 ----------------
+SERIAL5_PROTOCOL,23     # RCIN (CRSF/ELRS)
+RSSI_TYPE,3             # link quality from the receiver
+RC_OPTIONS,0
+# channels: 1-4 sticks (AETR), 5 arm, 6 flight modes, 7 lock, 8 release, 9 class filter, 10 RTL
+RC5_OPTION,153          # arm / disarm (ELRS AUX1 is the always-sent 2-position channel)
+FLTMODE_CH,6
+FLTMODE1,2              # switch up    -> AltHold (pilot, no GPS needed)
+FLTMODE2,2
+FLTMODE3,5
+FLTMODE4,5              # switch middle -> Loiter (pilot, GPS hold): take off and land here
+FLTMODE5,4
+FLTMODE6,4              # switch down  -> Guided (TRACKER flies; any other mode takes control back)
+RC7_OPTION,0            # read by the tracker (rc.lock_channel); ArduPilot must ignore it
+RC8_OPTION,0            # tracker (rc.release_channel)
+RC9_OPTION,0            # tracker (rc.filter_channel, 3-position)
+RC10_OPTION,4           # RTL switch
+FS_THR_ENABLE,1         # radio lost -> RTL (land if no GPS)
+FS_OPTIONS,0            # also in Guided: losing the radio ends tracking
+FS_GCS_ENABLE,0         # no ground station is required for the MVP
+
+# ---------------- companion computer: Raspberry Pi 5 on SERIAL2 (UART2) ----------------
+SERIAL2_PROTOCOL,2      # MAVLink2
+SERIAL2_BAUD,921        # 921600 (Pi /dev/ttyAMA0)
+SR2_POSITION,20         # GLOBAL_POSITION_INT at 20 Hz (tracker: altitude, speed, leash)
+SR2_EXTRA1,30           # ATTITUDE at 30 Hz (tilt correction)
+SR2_EXT_STAT,2          # SYS_STATUS (battery) and GPS_RAW_INT (satellites)
+SR2_RC_CHAN,10          # RC_CHANNELS (lock / release / filter switches)
+# optional MicoAir telemetry radio to a ground station: SERIAL6_PROTOCOL,2 SERIAL6_BAUD,57
+
+# ---------------- GPS + compass (HGLRC M100-PRO) ----------------
+# GPS on SERIAL1, type auto by default (GPS_TYPE, renamed GPS1_TYPE in 4.6): nothing to set
+COMPASS_ENABLE,1
+COMPASS_USE,1
+COMPASS_AUTODEC,1       # the board has no compass of its own; the M100-PRO's is the only one
+
+# ---------------- guided-mode limits for following people (MVP) ----------------
+GUID_TIMEOUT,1.0        # stop if the tracker goes silent for 1 s (default 3 s)
+WPNAV_SPEED,1000        # 10 m/s ceiling; the tracker caps each profile lower (pedestrian 4 m/s)
+WPNAV_ACCEL,400         # 4 m/s^2: the value the offline model and Gazebo runs were validated with
+LOIT_SPEED,800
+ANGLE_MAX,3500          # 35 deg; the model's sprinter case peaks at ~32 deg
+RTL_ALT,2000            # 20 m: CHECK above trees/structures at the field
+RTL_SPEED,500           # 5 m/s home
+LAND_SPEED,50           # cm/s final descent
+
+# ---------------- fence (backstop behind the tracker's 150 m leash) ----------------
+FENCE_ENABLE,1
+FENCE_TYPE,3            # max altitude + circle around home
+FENCE_RADIUS,200        # m; the tracker leash is 150 m and RTLs at 180 m
+FENCE_ALT_MAX,40        # m; tracker profiles fly 3-30 m
+FENCE_MARGIN,5
+FENCE_ACTION,1          # RTL (land if RTL is not possible)
+
+# ---------------- other failsafes ----------------
+FS_EKF_ACTION,1         # bad position estimate -> land
+FS_EKF_THRESH,0.8
+FS_CRASH_CHECK,1
+FS_VIBE_ENABLE,1
+BRD_SAFETY_DEFLT,0      # no hardware safety switch on this board
+
+# ---------------- logging ----------------
+LOG_BITMASK,180222      # default set incl. RC, motors, IMU, GPS, battery
+LOG_DISARMED,0
