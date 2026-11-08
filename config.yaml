@@ -67,6 +67,9 @@ pid:
   # tuning holds the same real distance and turn response (pid_controller2.py, tests/test_fov.py).
   fov_ref_deg: 90.0
   fov_normalise: true
+  # Never close in on a target nearer than this (ground geometry, not box size; 0 = off).
+  min_range_m: 4.0
+  min_range_by_class: {3: 6.0, 4: 6.0, 5: 8.0, 8: 8.0, 9: 5.0}   # car, van, truck, bus, motor
   # Yaw axis — horizontal centering
   yaw:
     kp: 1.2
@@ -173,6 +176,10 @@ safety:
   battery_warn_v: 0.0          # volts; 0 disables (set per pack, e.g. 3.5 * cells)
   battery_rtl_v: 0.0           # volts; 0 disables
   guided_mode_id: 4            # ArduCopter GUIDED; any other mode = pilot has control
+  leash_m: 150.0               # field: never fly further than this from home (where airborne began); 0 = off
+  leash_sim_m: 3000.0          # used instead when the video source is Gazebo (gz:...): highway world is 2 km
+  leash_rtl_margin_m: 30.0     # drifted this far past the leash anyway -> RTL
+  adopt_airborne_alt_m: 1.5    # pilot-launched flight: armed and above this = airborne (tracker acts only in GUIDED)
   takeoff_timeout_s: 30.0      # abort the climb wait after this long
   mode_timeout_s: 5.0          # GUIDED must be confirmed within this
   arm_timeout_s: 15.0          # arming must be confirmed within this (pre-arm/EKF)

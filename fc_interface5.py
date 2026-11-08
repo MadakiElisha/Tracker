@@ -289,7 +289,8 @@ class ArduPilotBackend(FCBackend):
 
         self._telem = {"armed": False, "mode": "UNKNOWN", "alt": 0.0,
                        "heading": 0, "vx": 0.0, "vy": 0.0, "vz": 0.0,
-                       "battery": 0.0, "gps_sats": 0, "tilt_rad": 0.0}
+                       "battery": 0.0, "gps_sats": 0, "tilt_rad": 0.0,
+                       "lat": None, "lon": None}
         self._telem_lock = threading.Lock()
         self.history = TelemetryHistory()
         self._last_rx = time.monotonic()
@@ -350,6 +351,8 @@ class ArduPilotBackend(FCBackend):
                 elif t == 'GLOBAL_POSITION_INT':
                     with self._telem_lock:
                         self._telem["alt"] = msg.relative_alt / 1000.0
+                        if msg.lat != 0 or msg.lon != 0:            # 0,0 = no fix yet
+                            self._telem["lat"], self._telem["lon"] = msg.lat / 1e7, msg.lon / 1e7
                         self._telem["vx"], self._telem["vy"], self._telem["vz"] = (
                             msg.vx / 100.0, msg.vy / 100.0, msg.vz / 100.0)
                         if msg.hdg != 65535:

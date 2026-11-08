@@ -147,6 +147,7 @@ class TrackerState:
         # ── Inter-thread data ─────────────────────────────────
         self.cmd   = CommandState()
         self.telem = TelemetryState()
+        self.dist_home_m: Optional[float] = None     # leash: metres from where the flight became airborne
 
         # ── Flight flags ──────────────────────────────────────
         self.flag_takeoff = threading.Event()

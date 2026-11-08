@@ -37,6 +37,7 @@ import numpy as np
 import yaml
 
 from tracker_logger  import setup_logging, get_logger
+from pi_health       import PiHealth
 from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
 from profiles        import apply_profile
@@ -46,7 +47,8 @@ from reid            import ReID
 from fc_interface5   import FCInterface
 from gcs_server      import GCSServer
 from mouse_lock      import MouseLocker
-from safety          import SafetySupervisor, HOVER, RELEASE_CONTROL, RTL, limit_vertical
+from safety          import (SafetySupervisor, HOVER, RELEASE_CONTROL, RTL, limit_vertical,
+                            ground_distance_m, leash_limit_vx, adopt_airborne)
 from run_logger      import RunLogger
 from demo_control    import CommandChannel, VideoRecorder, pick_target
 
@@ -77,7 +79,12 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
     disarmed_since = None
     warn_v  = cfg['safety'].get('battery_warn_v', 0.0)
     battery_warned = False
-    log.info("FC/safety thread started (no_fly=%s).", no_fly)
+    leash_m = float(cfg['safety'].get('leash_active_m', cfg['safety'].get('leash_m', 0.0)) or 0.0)
+    adopt_alt = float(cfg['safety'].get('adopt_airborne_alt_m', 1.5) or 0.0)
+    home = None
+    leash_clamping = False
+    log.info("FC/safety thread started (no_fly=%s, leash=%s).", no_fly,
+             f"{leash_m:.0f} m" if leash_m > 0 else "off")
 
     while not state.flag_quit.is_set():
         try:
@@ -135,6 +142,17 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
             else:
                 battery_warned = False
 
+            # -- pilot-launched flight --------------------------------------
+            # The pilot may take off in Loiter/AltHold and switch to GUIDED to hand over. Without
+            # this the tracker only ever commanded flights it launched itself.
+            if not state.is_airborne and adopt_airborne(telem.get('armed', False),
+                                                         telem.get('alt', 0.0), adopt_alt):
+                state.is_airborne = True
+                state.rtl_issued = False
+                disarmed_since = None
+                log.info("Airborne (pilot-launched): armed at %.1f m, mode %s. Tracker commands only in GUIDED.",
+                         telem.get('alt', 0.0), telem.get('mode', '?'))
+
             # -- landed detection -----------------------------------------
             if state.is_airborne:
                 if not telem.get('armed', False) and telem.get('alt', 0.0) < 0.5:
@@ -147,13 +165,26 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
                 else:
                     disarmed_since = None
 
+            # -- home + leash ---------------------------------------------
+            pos = ((telem['lat'], telem['lon'])
+                   if telem.get('lat') is not None and telem.get('lon') is not None else None)
+            if not state.is_airborne:
+                home = None
+            elif home is None and pos is not None:
+                home = pos
+                log.info("Leash home set at %.6f, %.6f (%s).", pos[0], pos[1],
+                         f"{leash_m:.0f} m" if leash_m > 0 else "leash off")
+            dist_home = ground_distance_m(home[0], home[1], pos[0], pos[1]) if (home and pos) else None
+            state.dist_home_m = dist_home
+
             # -- safety supervisor ----------------------------------------
             decision = supervisor.evaluate(
                 airborne=state.is_airborne,
                 takeoff_in_progress=False,
                 mode=telem.get('mode', 'UNKNOWN'),
                 telemetry_age_s=fc.telemetry_age(),
-                battery_v=telem.get('battery', 0.0))
+                battery_v=telem.get('battery', 0.0),
+                dist_home_m=dist_home, leash_m=leash_m)
             state.safety = decision
             if decision.action != last_action:
                 if decision.action == "NONE":
@@ -184,6 +215,15 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
                 max_yaw = cfg['flight']['max_yaw_rate']
                 vx  = max(-max_fwd, min(max_fwd, vx))       # master speed caps,
                 yaw = max(-max_yaw, min(max_yaw, yaw))      # independent of PID tuning
+                vx_req = vx
+                vx = leash_limit_vx(vx, telem.get('heading', 0), pos, home, leash_m)
+                if (vx != vx_req) != leash_clamping:
+                    leash_clamping = vx != vx_req
+                    if leash_clamping:
+                        log.warning("LEASH: %.0f m from home (limit %.0f m): not flying further out.",
+                                    dist_home or 0.0, leash_m)
+                    else:
+                        log.info("LEASH: back inside / heading home; forward commands resumed.")
                 vz = limit_vertical(vz, telem.get('alt', 0.0),
                                     cfg['flight']['min_altitude'],
                                     cfg['flight']['max_altitude'])
@@ -488,9 +528,17 @@ def main():
         log.warning("FC unavailable; continuing in --no-fly mode without FC.")
         fc = None
 
+    # Leash: the field value, or a much larger one in Gazebo (the highway world is 2 km long)
+    sim_source = str(args.source).startswith('gz:')
+    sc = cfg['safety']
+    sc['leash_active_m'] = float(sc.get('leash_sim_m', 0.0) if sim_source else sc.get('leash_m', 0.0))
+    log.info("Leash: %s (%s).", f"{sc['leash_active_m']:.0f} m" if sc['leash_active_m'] > 0 else "off",
+             "Gazebo source: safety.leash_sim_m" if sim_source else "safety.leash_m")
+
     fc_t = threading.Thread(target=fc_thread_fn, name="fc-thread", daemon=True,
                             args=(fc, state, cfg, args.no_fly, supervisor))
     fc_t.start()
+    health = PiHealth(log=log).start()            # temperature + under-voltage (no-op off the Pi)
 
     # -- GCS browser (waitress) -------------------------------------------
     gcs_cfg = cfg['gcs']
@@ -849,7 +897,9 @@ def main():
                 gs=round(math.hypot(tm.get('vx', 0.0), tm.get('vy', 0.0)), 2), v_fwd=round(v_fwd, 2),
                 tilt_deg=round(math.degrees(tm.get('tilt_rad', 0.0)), 1), det_ms=round(det_ms, 1),
                 reid=reid_note, t_read=round(now - t_run0, 3),
-                tilt_now_deg=round(math.degrees(tilt_now), 2), seg=seg_label)
+                tilt_now_deg=round(math.degrees(tilt_now), 2), seg=seg_label,
+                dist_home='' if state.dist_home_m is None else round(state.dist_home_m, 1),
+                **health.row())
 
             # ---- display + keys ----------------------------------------------
             if seg_label:
@@ -905,6 +955,7 @@ def main():
                     fc.rtl()
                 except Exception as e:
                     log.error("RTL on shutdown failed: %s", e)
+        health.stop()
         fc_t.join(timeout=3)
         if cap is not None:
             cap.release()
