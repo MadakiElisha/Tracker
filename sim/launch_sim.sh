@@ -2,6 +2,7 @@
 # =============================================================
 # Drone Tracker — Full Simulation Launcher
 # Usage: ./launch_sim.sh [ardupilot|px4] [scene]
+#   HITL_OUT=10.42.0.2 ./launch_sim.sh ...   also sends MAVLink to the Pi (hardware-in-the-loop)
 #   scene (optional, default = the original small world, unchanged):
 #     highway       2 km road + fast SITL limits (stock Iris)
 #     highway-fast  same, with the stronger-thrust quad made by sim/make_fast_quad.py
@@ -123,7 +124,8 @@ if [ "$FC" = "ardupilot" ]; then
         --console \
         --no-rebuild \
         --out=udp:127.0.0.1:14550 \
-        --out=udp:127.0.0.1:14551 &
+        --out=udp:127.0.0.1:14551 \
+        ${HITL_OUT:+--out=udp:$HITL_OUT:14550} &
     SITL_PID=$!
 
     # Wait for SITL MAVProxy port to confirm it started
