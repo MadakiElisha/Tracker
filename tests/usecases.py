@@ -173,9 +173,10 @@ def load_cfg():
     return yaml.safe_load(open(os.path.join(root, 'config.yaml')))
 
 
-def run_matrix(cfg=None, gimbal=None, airframe=None):
+def run_matrix(cfg=None, gimbal=None, airframe=None, hfov=None):
     cfg = cfg or load_cfg()
-    return [(uc, evaluate(uc, cfg, gimbal=gimbal, airframe=airframe)) for uc in USE_CASES]
+    extra = {'hfov_deg': hfov} if hfov else None
+    return [(uc, evaluate(uc, cfg, gimbal=gimbal, airframe=airframe, extra=extra)) for uc in USE_CASES]
 
 
 def main():
@@ -183,11 +184,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--gimbal', choices=['profile', 'on', 'off'], default='profile',
                     help="profile = use each profile's camera.gimbal")
+    ap.add_argument('--hfov', type=float, default=None,
+                    help='camera horizontal FOV in degrees (default 90 = Gazebo; IMX519 66.3, IMX296 M12 ~83.3)')
     a = ap.parse_args()
     g = {'profile': None, 'on': True, 'off': False}[a.gimbal]
     print(f"{'use case':36s} {'profile':10s} {'verdict':7s} visible within20 medRE  maxV  tilt  final_d")
     npass = 0
-    for uc, m in run_matrix(gimbal=g):
+    for uc, m in run_matrix(gimbal=g, hfov=a.hfov):
         v = verdict(m); npass += v == "PASS"
         print(f"{uc.name:36s} {uc.profile:10s} {v:7s} {m['visible']:6.2f} {m['within20']:8.2f} {m['med_re']:6.2f} "
               f"{m['max_speed']:5.1f} {m['max_tilt']:4.0f}° {m['final_dist']:7.1f}  {uc.note}")

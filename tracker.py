@@ -40,6 +40,7 @@ from tracker_logger  import setup_logging, get_logger
 from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
 from profiles        import apply_profile
+from model_select    import resolve_model, apply_camera_preset, ClassMap
 from class_vote      import ClassVote
 from reid            import ReID
 from fc_interface5   import FCInterface
@@ -418,7 +419,11 @@ def main():
     parser.add_argument('--fc',      default=cfg['fc'].get('type', 'ardupilot'))
     parser.add_argument('--connect', default=cfg['fc'].get('connection', '127.0.0.1:14550'))
     parser.add_argument('--source',  default=str(cfg['video'].get('source', '0')),
-                        help='Camera index or video file path')
+                        help='Camera index, video file, gz:/topic (Gazebo) or csi:N (Pi ribbon camera)')
+    parser.add_argument('--model',   default=None,
+                        help='Override model: a .pt file or a *_hailo_model/ folder (Hailo HEF export)')
+    parser.add_argument('--camera',  default=cfg.get('camera', {}).get('sensor'),
+                        help='Camera preset from config.yaml `camera.sensors:` (sets field of view and CSI settings)')
     parser.add_argument('--profile', default=cfg.get('active_profile'),
                         help='Mission profile from config.yaml `profiles:` '
                              f"({', '.join(sorted((cfg.get('profiles') or {})))})")
@@ -432,6 +437,15 @@ def main():
     parser.add_argument('--record', default=None, metavar='PATH',
                         help='Write the annotated video to this file. Off unless given.')
     args = parser.parse_args()
+    if args.camera:
+        try:
+            cfg = apply_camera_preset(cfg, args.camera)
+        except ValueError as e:
+            log.error("%s", e)
+            sys.exit(2)
+        log.info("Camera preset '%s': hfov %.1f deg, pitch %.1f deg",
+                 args.camera, cfg['camera']['hfov_deg'], cfg['camera'].get('pitch_deg', 0.0))
+
     cfg_all = cfg                       # keeps the `profiles:` table for runtime switching (demo `profile` command)
     if args.profile:
         try:
@@ -445,6 +459,13 @@ def main():
         if cfg['flight']['max_forward_speed'] > 10.0 and not cfg.get('camera', {}).get('gimbal', False):
             log.warning("Profile '%s' flies above ~10 m/s without a stabilised camera: tilt "
                         "corrections have little margin left; a gimbal is recommended.", args.profile)
+        hfov = float(cfg.get('camera', {}).get('hfov_deg', 90.0))
+        if (hfov < 75.0 and cfg['flight']['max_forward_speed'] > 7.0
+                and not cfg.get('camera', {}).get('gimbal', False)):
+            log.warning("Camera hfov %.0f deg is narrow for profile '%s' (cap %.1f m/s): in the closed-loop "
+                        "model a fixed narrow lens loses targets above ~7 m/s (lean takes them out of "
+                        "frame). Use a wide lens (~83 deg) or a gimbal for vehicles.",
+                        hfov, args.profile, cfg['flight']['max_forward_speed'])
 
     fw, fh = cfg['video']['frame_width'], cfg['video']['frame_height']
     state = TrackerState()
@@ -499,12 +520,16 @@ def main():
 
     # -- model ------------------------------------------------------------
     from ultralytics import YOLO
-    model_path = cfg['model']['path']
-    if not Path(model_path).exists():
-        log.error("Model file not found: %s  (run: python3 model_download.py)", model_path)
+    try:
+        model_path, backend = resolve_model(cfg['model'], args.model)
+    except FileNotFoundError as e:
+        log.error("%s", e)
         sys.exit(1)
-    model = YOLO(model_path)
-    log.info("Model loaded: %s", model_path)
+    # task given for the Hailo folder (no .pt metadata to infer it from); .pt files know their task
+    model = YOLO(model_path, task='detect') if backend == 'hailo' else YOLO(model_path)
+    log.info("Model loaded: %s (backend: %s)", model_path, backend)
+    class_map = ClassMap(getattr(model, 'names', None))
+    log.info("Model classes: %s", class_map.describe())
 
     cam = cfg.get('camera', {})
     pid_cfg = dict(cfg['pid'])
@@ -541,7 +566,16 @@ def main():
 
     # -- video ------------------------------------------------------------
     src = int(args.source) if str(args.source).isdigit() else args.source
-    if isinstance(src, str) and src.startswith('gz:'):
+    if isinstance(src, str) and (src == 'csi' or src.startswith('csi:')):
+        try:
+            from csi_camera import CsiCamera, parse_csi_spec
+            cap = CsiCamera(parse_csi_spec(src), fw, fh, cfg['video'].get('fps', 30),
+                            cfg.get('camera', {}).get('csi'))
+        except Exception as e:
+            log.error("csi: source failed (%s). On the Pi: sudo apt install python3-picamera2, "
+                      "venv with --system-site-packages; check rpicam-hello --list-cameras.", e)
+            sys.exit(2)
+    elif isinstance(src, str) and src.startswith('gz:'):
         try:
             from gz_camera import GzCamera
             cap = GzCamera(src[3:] or '/drone/camera')
@@ -574,7 +608,7 @@ def main():
             if cap is not None:
                 ret, frame = cap.read()
                 if not ret:
-                    if isinstance(src, str) and not just_rewound:
+                    if isinstance(src, str) and not getattr(cap, 'is_live', False) and not just_rewound:
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)    # loop a clip
                         just_rewound = True
                         continue
@@ -637,7 +671,7 @@ def main():
                     frame, persist=True, verbose=False,
                     conf=cfg['model']['conf_threshold'],
                     iou=cfg['model']['iou_threshold'],
-                    classes=active_classes,
+                    classes=class_map.model_classes(active_classes),
                     tracker=cfg['tracking']['tracker_config'])
             except Exception as e:
                 state.errors.record('inference', e)
@@ -649,8 +683,10 @@ def main():
                 boxes   = results[0].boxes.xyxy.cpu().numpy()
                 ids     = results[0].boxes.id.cpu().numpy().astype(int)
                 confs   = results[0].boxes.conf.cpu().numpy()
-                classes = results[0].boxes.cls.cpu().numpy().astype(int)
+                classes = [class_map.internal(c) for c in results[0].boxes.cls.cpu().numpy().astype(int)]
                 for i in range(len(ids)):
+                    if classes[i] < 0:
+                        continue                     # model class the tracker does not use
                     entry = [boxes[i][0], boxes[i][1], boxes[i][2], boxes[i][3],
                              ids[i], confs[i], classes[i]]
                     tracks.append(entry)
