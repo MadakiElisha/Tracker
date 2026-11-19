@@ -31,6 +31,18 @@ else
 fi
 echo "[hailo] DFC wheel wants Python $PYVER"
 
+# The DFC's first-run check requires the system python${PYVER}-dev package (C headers). Ubuntu
+# 24.04 ships only Python 3.12, so older versions come from the deadsnakes PPA.
+if ! dpkg -s "python${PYVER}-dev" >/dev/null 2>&1; then
+  if ! apt-cache show "python${PYVER}-dev" >/dev/null 2>&1; then
+    echo "[hailo] python${PYVER}-dev is not in this Ubuntu release: adding ppa:deadsnakes/ppa"
+    sudo apt-get install -y software-properties-common >/dev/null
+    sudo add-apt-repository -y ppa:deadsnakes/ppa
+    sudo apt-get update
+  fi
+  sudo apt-get install -y "python${PYVER}-dev" "python${PYVER}-venv"
+fi
+
 if ! command -v uv >/dev/null; then
   echo "[hailo] installing uv (Python version manager) for this user"
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -51,4 +63,8 @@ python3 - <<'EOF'
 import hailo_sdk_client, ultralytics
 print("[hailo] DFC import OK; Ultralytics", ultralytics.__version__)
 EOF
+# Run the DFC's own first-use system check now, answering its "continue?" prompt, so missing
+# requirements show up here rather than half-way through a compile.
+echo "[hailo] DFC system check (RAM < 32 GB or no CUDA are warnings only: it compiles on the CPU)"
+hailo --version < <(yes y) || { echo "[hailo] DFC system check failed: see the [Error] lines above"; exit 1; }
 echo "[hailo] ready:  source venv-hailo/bin/activate && python3 deployment/export_hailo.py"
