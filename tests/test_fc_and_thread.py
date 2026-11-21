@@ -193,6 +193,7 @@ class FakeFC:
     def telemetry_age(self): return self.age
     def send_velocity(self, vx, vy, vz, yaw): self.vel.append((vx, vy, vz, yaw))
     def hover(self): self.calls.append("hover")
+    def idle(self): self.calls.append("idle")
     def rtl(self): self.calls.append("rtl")
     def land(self): self.calls.append("land")
     def arm_and_takeoff(self, alt):
@@ -320,7 +321,8 @@ def test_successful_takeoff_sets_airborne():
     st.flag_takeoff.set()
     time.sleep(0.3)
     stop(th, st)
-    assert fc.calls[0] == "takeoff10" and st.is_airborne
+    acts = [c for c in fc.calls if c != "idle"]          # idle(): no stream while on the ground
+    assert acts[0] == "takeoff10" and st.is_airborne
 
 
 def test_operator_rtl_and_land_keys():
@@ -373,3 +375,59 @@ def test_speed_caps_applied_before_sending():
     assert sent, "should still be sending"
     assert all(abs(v[0]) <= CFG['flight']['max_forward_speed'] + 1e-9 for v in sent)
     assert all(abs(v[3]) <= CFG['flight']['max_yaw_rate'] + 1e-9 for v in sent)
+
+
+# ---- no velocity stream unless the tracker is flying (GUIDED takeoff was pinned down) -----------
+def _worker(b, seconds):
+    b.running = b.is_connected = True
+    th = threading.Thread(target=b._backend_worker, daemon=True)
+    th.start()
+    time.sleep(seconds)
+    b.running = False
+    th.join(1)
+    return [s for s in b.sent if s[0] == "vel"]
+
+
+def test_worker_sends_nothing_while_armed_but_not_commanding():
+    """Armed in GUIDED, tracker not flying (e.g. a GCS/pilot takeoff): zero-velocity setpoints
+    here held vz=0 and kept the drone on the ground until ArduPilot disarmed it."""
+    b = FakeArdu()
+    b._telem["armed"] = True
+    b.watchdog_timeout = 0.05
+    b.last_cmd_time = time.monotonic()
+    assert _worker(b, 0.3) == []
+
+
+def test_worker_stops_streaming_after_idle():
+    b = FakeArdu()
+    b._telem["armed"] = True
+    b.is_connected = True
+    b.last_cmd_time = time.monotonic()
+    b.send_velocity(1.0, 0.0, 0.0, 0.0)
+    assert _worker(b, 0.15), "commanded: streamed"
+    b.sent.clear()
+    b.idle()
+    assert not b.commanding
+    assert _worker(b, 0.2) == []
+    b.hover()                                          # tracker takes over again -> streams
+    b.last_cmd_time = time.monotonic()
+    assert _worker(b, 0.1)
+
+
+def test_fc_thread_idles_on_the_ground_and_under_pilot_control():
+    fc, st = FakeFC(armed=True, alt=0.3, mode="4"), TrackerState()     # armed in GUIDED, on the ground
+    th, sup = run_thread(fc, st)
+    for _ in range(10):
+        sup.note_frame()
+        time.sleep(0.02)
+    stop(th, st)
+    assert "idle" in fc.calls and not fc.vel
+
+    fc, st = FakeFC(armed=True, alt=10.0, mode="5"), fresh_airborne()  # LOITER: pilot flies
+    th, sup = run_thread(fc, st)
+    for _ in range(10):
+        st.cmd.update(1.0, 0.0, 0.0)
+        sup.note_frame()
+        time.sleep(0.02)
+    stop(th, st)
+    assert "idle" in fc.calls and "hover" not in fc.calls and not fc.vel
