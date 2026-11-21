@@ -513,6 +513,7 @@ class FCInterface:
     def arm_and_takeoff(self, alt) -> bool:    return self.backend.arm_and_takeoff(alt)
     def send_velocity(self, vx, vy, vz, yaw):  self.backend.send_velocity(vx, vy, vz, yaw)
     def hover(self):                           self.backend.hover()
+    def idle(self):                            self.backend.idle()
     def rtl(self) -> bool:                     return self.backend.rtl()
     def land(self) -> bool:                    return self.backend.land()
     def abort_takeoff(self):                   self.backend.abort_takeoff.set()
