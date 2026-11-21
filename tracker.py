@@ -198,7 +198,9 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
                 fc.hover()
             elif decision.action == RELEASE_CONTROL:
                 state.cmd.zero()
-                if not decision.reason.startswith("pilot_override"):
+                if decision.reason.startswith("pilot_override"):
+                    fc.idle()                  # the pilot flies: send nothing at all
+                else:
                     fc.hover()
             elif decision.action == RTL:
                 state.cmd.zero()
@@ -207,6 +209,8 @@ def fc_thread_fn(fc, state: TrackerState, cfg: dict, no_fly: bool,
                     state.rtl_issued = True
 
             # -- velocity stream ------------------------------------------
+            if not state.is_airborne and decision.action == "NONE":
+                fc.idle()                      # on the ground / taking off: never pin it down
             if state.is_airborne and not decision.suppress_commands:
                 vx, vz, yaw, age = state.cmd.read_with_age()
                 if age > cmd_timeout:

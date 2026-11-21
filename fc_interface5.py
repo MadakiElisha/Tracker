@@ -119,6 +119,9 @@ class FCBackend(ABC):
         self.is_connected = False
         self.running = False
         self.last_cmd_time = 0.0
+        # True only while the tracker is flying the drone. While False the command thread sends
+        # NOTHING, so the tracker never interferes with a takeoff, landing or pilot-flown phase.
+        self.commanding = False
         self.watchdog_timeout = float(self.fc_cfg.get('watchdog_timeout', 0.5))
         self.takeoff_in_progress = False
         self.abort_takeoff = threading.Event()
@@ -177,11 +180,22 @@ class FCBackend(ABC):
             return
         self._put_latest((vx, vy, vz, yaw_rate))
         self.last_cmd_time = time.monotonic()
+        self.commanding = True
 
     def hover(self):
         """Immediately command zero velocity and keep streaming it."""
         self._put_latest((0.0, 0.0, 0.0, 0.0))
         self.last_cmd_time = time.monotonic()
+        self.commanding = True
+
+    def idle(self):
+        """Stop streaming velocity setpoints: the tracker is not flying the drone (on the
+        ground, taking off, or the pilot has control). Before this existed the command thread
+        streamed zero velocity whenever the drone was armed, which pinned a GUIDED takeoff to
+        the ground."""
+        if self.commanding:
+            self.commanding = False
+            self._put_latest((0.0, 0.0, 0.0, 0.0))
 
     def _put_latest(self, cmd):
         try:
@@ -198,7 +212,9 @@ class FCBackend(ABC):
         cur = (0.0, 0.0, 0.0, 0.0)
         was_stale = False
         while self.running:
-            if self.takeoff_in_progress:
+            if self.takeoff_in_progress or not self.commanding:
+                cur = (0.0, 0.0, 0.0, 0.0)
+                was_stale = False
                 time.sleep(0.05)
                 continue
             armed = self.get_telemetry().get("armed", False)
