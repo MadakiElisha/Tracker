@@ -431,3 +431,17 @@ def test_fc_thread_idles_on_the_ground_and_under_pilot_control():
         time.sleep(0.02)
     stop(th, st)
     assert "idle" in fc.calls and "hover" not in fc.calls and not fc.vel
+
+
+def test_fcinterface_exposes_everything_the_fc_thread_calls():
+    """The FC thread talks to FCInterface, tests use FakeFC: a method missing from the real
+    wrapper (idle(), first HITL run) only shows up on hardware. Check every call site."""
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tracker.py')).read()
+    used = set(re.findall(r'\bfc\.([a-z_]+)\(', src))
+    missing = sorted(m for m in used if not callable(getattr(fci.FCInterface, m, None)))
+    assert not missing, f"FCInterface lacks: {missing}"
+    fake = sorted(m for m in used if not callable(getattr(FakeFC, m, None)) and m not in
+                  ('connect', 'disconnect', 'telemetry_at', 'consume_rc_events', 'arm_and_takeoff',
+                   'abort_takeoff'))
+    assert not fake, f"FakeFC lacks: {fake}"
