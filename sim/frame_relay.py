@@ -79,12 +79,17 @@ def capture_loop(src, box: Latest, quality: int, size, loop: bool, stats: dict, 
             time.sleep(max(0.0, period - (time.monotonic() - t0)))
 
 
-def serve(box: Latest, host: str, port: int, stats: dict, stop: threading.Event):
+def open_server(host: str, port: int) -> socket.socket:
+    """Bind the listening socket. Raises OSError (e.g. port already in use) BEFORE any thread starts."""
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind((host, port))
     srv.listen(1)
     srv.settimeout(0.5)
+    return srv
+
+
+def serve(srv: socket.socket, box: Latest, host: str, port: int, stats: dict, stop: threading.Event):
     print(f"[relay] listening on {host}:{port}", flush=True)
     while not stop.is_set():
         try:
@@ -125,6 +130,12 @@ def main() -> int:
     a = ap.parse_args()
 
     size = tuple(int(x) for x in a.size.lower().split('x')) if a.size else None
+    try:
+        srv = open_server(a.host, a.port)
+    except OSError as e:
+        print(f"[relay] cannot listen on {a.host}:{a.port}: {e.strerror}. "
+              f"Another relay is probably still running: pkill -f frame_relay.py")
+        return 1
     src = open_source(a.source)
     if not src.isOpened():
         print(f"[relay] cannot open {a.source}")
@@ -134,7 +145,7 @@ def main() -> int:
     pace = 0.0 if a.source.startswith('gz:') else a.fps
     threading.Thread(target=capture_loop, args=(src, box, a.quality, size, a.loop, stats, stop, pace),
                      daemon=True).start()
-    threading.Thread(target=serve, args=(box, a.host, a.port, stats, stop), daemon=True).start()
+    threading.Thread(target=serve, args=(srv, box, a.host, a.port, stats, stop), daemon=True).start()
     t0, last = time.monotonic(), dict(stats)
     try:
         while not stop.is_set():
