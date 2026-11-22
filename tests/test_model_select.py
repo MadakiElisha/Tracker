@@ -164,12 +164,23 @@ def test_tracking_overrides_and_repo_tracker_file():
         tracking_params(cfg, None, "trackers/nope.yaml")
 
 
+BYTETRACK_KEYS = {"tracker_type", "track_high_thresh", "track_low_thresh", "new_track_thresh",
+                  "track_buffer", "match_thresh", "fuse_score"}
+
+
 def test_drone_bytetrack_yaml_matches_ultralytics_schema():
-    import ultralytics, os
-    default = yaml.safe_load(open(os.path.join(os.path.dirname(ultralytics.__file__), "cfg/trackers/bytetrack.yaml")))
+    """Same keys as Ultralytics' bytetrack.yaml (pinned here; CI does not install ultralytics,
+    so the live comparison only runs where it is installed)."""
     ours = yaml.safe_load(open(ROOT / "trackers" / "bytetrack_drone.yaml"))
-    assert set(ours) == set(default)                                # same keys, nothing misspelt
+    assert set(ours) == BYTETRACK_KEYS                              # nothing misspelt or missing
+    assert ours["tracker_type"] == "bytetrack"
     assert ours["track_buffer"] == 45 and ours["track_low_thresh"] == 0.1
+    try:
+        import ultralytics, os
+    except ImportError:
+        return
+    default = yaml.safe_load(open(os.path.join(os.path.dirname(ultralytics.__file__), "cfg/trackers/bytetrack.yaml")))
+    assert set(default) == BYTETRACK_KEYS
 
 
 def test_confident_filter():
