@@ -41,7 +41,7 @@ from pi_health       import PiHealth
 from tracker_state   import TrackerState
 from pid_controller2 import TrackerPID
 from profiles        import apply_profile
-from model_select    import resolve_model, apply_camera_preset, ClassMap
+from model_select    import resolve_model, apply_camera_preset, ClassMap, tracking_params, confident
 from class_vote      import ClassVote
 from reid            import ReID
 from fc_interface5   import FCInterface
@@ -465,6 +465,11 @@ def main():
     parser.add_argument('--source',  default=str(cfg['video'].get('source', '0')),
                         help='Camera index, video file, gz:/topic (Gazebo), csi:N (Pi ribbon camera) '
                              'or net:HOST:PORT (HITL: Gazebo frames relayed by sim/frame_relay.py)')
+    parser.add_argument('--det-conf', type=float, default=None,
+                        help='Detection confidence passed to the tracker (default tracking.detector_conf, '
+                             'else model.conf_threshold). 0.1 lets ByteTrack keep weak detections.')
+    parser.add_argument('--tracker-config', default=None,
+                        help='ByteTrack yaml (default tracking.tracker_config), e.g. trackers/bytetrack_drone.yaml')
     parser.add_argument('--model',   default=None,
                         help='Override model: a .pt file or a *_hailo_model/ folder (Hailo HEF export)')
     parser.add_argument('--camera',  default=cfg.get('camera', {}).get('sensor'),
@@ -584,6 +589,13 @@ def main():
     log.info("Model loaded: %s (backend: %s)", model_path, backend)
     class_map = ClassMap(getattr(model, 'names', None))
     log.info("Model classes: %s", class_map.describe())
+    try:
+        det_conf, lock_conf, tracker_cfg = tracking_params(cfg, args.det_conf, args.tracker_config)
+    except (ValueError, FileNotFoundError) as e:
+        log.error("%s", e)
+        sys.exit(2)
+    log.info("Tracking: detections >= %.2f to ByteTrack (%s); new locks and re-ID need >= %.2f.",
+             det_conf, tracker_cfg, lock_conf)
 
     cam = cfg.get('camera', {})
     pid_cfg = dict(cfg['pid'])
@@ -728,10 +740,10 @@ def main():
             try:
                 results = model.track(
                     frame, persist=True, verbose=False,
-                    conf=cfg['model']['conf_threshold'],
+                    conf=det_conf,
                     iou=cfg['model']['iou_threshold'],
                     classes=class_map.model_classes(active_classes),
-                    tracker=cfg['tracking']['tracker_config'])
+                    tracker=tracker_cfg)
             except Exception as e:
                 state.errors.record('inference', e)
                 results = None
@@ -778,12 +790,16 @@ def main():
                 state.lock_target(int(track[4]),
                                   target_classes.get(int(track[6]), '?'), source, pid)
 
+            # New locks and re-ID use confident tracks only; weak detections (det_conf..lock_conf)
+            # exist to keep an EXISTING track alive, never to start following something new.
+            sure = confident(tracks, lock_conf)
+
             def largest():
-                return max(tracks, key=lambda t: (t[2] - t[0]) * (t[3] - t[1]))
+                return max(sure, key=lambda t: (t[2] - t[0]) * (t[3] - t[1]))
 
             # ---- target assignment -----------------------------------------
             if rc_lock_evt:
-                if tracks: try_lock(largest(), "RC_LOCK")
+                if sure: try_lock(largest(), "RC_LOCK")
                 else:      log.info("RC lock: no targets visible.")
             if rc_rel_evt:
                 state.release_lock("RC_RELEASE", pid)
@@ -844,7 +860,7 @@ def main():
             if state.locked_id is not None and not suppressed:
                 lt = next((t for t in tracks if int(t[4]) == state.locked_id), None)
                 if lt is None and reid.enabled:
-                    cand = reid.propose(frame, tracks, now)
+                    cand = reid.propose(frame, sure, now)
                     if cand is not None:
                         log.info("[REID] re-locked: %s", reid.last_event)
                         state.locked_id = int(cand[4])

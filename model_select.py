@@ -125,3 +125,34 @@ class ClassMap:
             return "VisDrone classes (no mapping)"
         inv = {v: k for k, v in VISDRONE_IDS.items()}
         return ", ".join(f"{m}->{inv[i]}" for m, i in sorted(self.to_internal.items()))
+
+
+# ---- tracking thresholds -------------------------------------------------------------------------
+ROOT_DIR = Path(__file__).resolve().parent
+
+
+def tracking_params(cfg: dict, det_conf_override=None, tracker_override=None):
+    """-> (det_conf, lock_conf, tracker_config_path).
+
+    det_conf: detections passed to ByteTrack. lock_conf (model.conf_threshold): what a new lock or
+    a re-ID re-lock needs. With det_conf == lock_conf (the default) behaviour is exactly as before.
+    """
+    lock_conf = float(cfg['model']['conf_threshold'])
+    det = det_conf_override if det_conf_override is not None else cfg.get('tracking', {}).get('detector_conf')
+    det_conf = float(det) if det is not None else lock_conf
+    if not 0.0 < det_conf <= lock_conf:
+        raise ValueError(f"detector conf {det_conf} must be in (0, model.conf_threshold={lock_conf}]")
+    trk = tracker_override or cfg.get('tracking', {}).get('tracker_config', 'bytetrack.yaml')
+    local = ROOT_DIR / trk
+    if local.is_file():
+        trk = str(local)                 # repo file (trackers/...); bare names are Ultralytics built-ins
+    elif ('/' in trk or trk.endswith(('.yaml', '.yml'))) and Path(trk).is_file():
+        trk = str(Path(trk))
+    elif '/' in trk:
+        raise FileNotFoundError(f"tracker config not found: {trk}")
+    return det_conf, lock_conf, trk
+
+
+def confident(tracks, lock_conf: float):
+    """Tracks whose detection confidence (index 5) reaches lock_conf."""
+    return [t for t in tracks if float(t[5]) >= lock_conf]

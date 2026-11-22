@@ -140,3 +140,49 @@ def test_coco_filter_groups_translate():
     g = cfg["classes"]["groups"]
     assert m.model_classes(g["person"]) == [0]                        # pedestrian+people -> person
     assert m.model_classes(g["vehicle"]) == [2, 3, 5, 7]              # car, motorcycle, bus, truck (no van in COCO)
+
+
+# ---- tracking thresholds ----------------------------------------------------------------------
+from model_select import tracking_params, confident   # noqa: E402
+
+
+def test_tracking_defaults_unchanged():
+    cfg = yaml.safe_load(open(ROOT / "config.yaml"))
+    det, lock, trk = tracking_params(cfg)
+    assert det == lock == cfg["model"]["conf_threshold"]          # exactly the previous behaviour
+    assert trk == "bytetrack.yaml"                                 # Ultralytics built-in
+
+
+def test_tracking_overrides_and_repo_tracker_file():
+    cfg = yaml.safe_load(open(ROOT / "config.yaml"))
+    det, lock, trk = tracking_params(cfg, 0.1, "trackers/bytetrack_drone.yaml")
+    assert det == 0.1 and lock == cfg["model"]["conf_threshold"]
+    assert trk == str(ROOT / "trackers" / "bytetrack_drone.yaml")
+    with pytest.raises(ValueError):
+        tracking_params(cfg, 0.9)                                   # above the lock threshold
+    with pytest.raises(FileNotFoundError):
+        tracking_params(cfg, None, "trackers/nope.yaml")
+
+
+BYTETRACK_KEYS = {"tracker_type", "track_high_thresh", "track_low_thresh", "new_track_thresh",
+                  "track_buffer", "match_thresh", "fuse_score"}
+
+
+def test_drone_bytetrack_yaml_matches_ultralytics_schema():
+    """Same keys as Ultralytics' bytetrack.yaml (pinned here; CI does not install ultralytics,
+    so the live comparison only runs where it is installed)."""
+    ours = yaml.safe_load(open(ROOT / "trackers" / "bytetrack_drone.yaml"))
+    assert set(ours) == BYTETRACK_KEYS                              # nothing misspelt or missing
+    assert ours["tracker_type"] == "bytetrack"
+    assert ours["track_buffer"] == 45 and ours["track_low_thresh"] == 0.1
+    try:
+        import ultralytics, os
+    except ImportError:
+        return
+    default = yaml.safe_load(open(os.path.join(os.path.dirname(ultralytics.__file__), "cfg/trackers/bytetrack.yaml")))
+    assert set(default) == BYTETRACK_KEYS
+
+
+def test_confident_filter():
+    tr = [[0, 0, 1, 1, 7, 0.12, 0], [0, 0, 1, 1, 8, 0.50, 0]]
+    assert [t[4] for t in confident(tr, 0.35)] == [8]
