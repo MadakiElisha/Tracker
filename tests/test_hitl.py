@@ -146,3 +146,19 @@ def test_frame_relay_script_end_to_end(tmp_path):
             cam.release()
         proc.terminate()
         proc.wait(5)
+
+
+def test_frame_relay_exits_clearly_when_port_is_taken(tmp_path):
+    """A second relay must stop with a message, not keep capturing with no server (seen in HITL)."""
+    port = _free_port()
+    blocker = socket.socket()
+    blocker.bind(('127.0.0.1', port))
+    blocker.listen(1)
+    try:
+        r = subprocess.run([sys.executable, os.path.join(ROOT, 'sim', 'frame_relay.py'), '--source', 'nope.avi',
+                            '--host', '127.0.0.1', '--port', str(port)],
+                           capture_output=True, text=True, timeout=20)
+        assert r.returncode == 1
+        assert "pkill -f frame_relay.py" in r.stdout and "Traceback" not in r.stderr
+    finally:
+        blocker.close()
