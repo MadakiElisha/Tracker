@@ -50,10 +50,11 @@ classes:
 # --- Tracking ---
 tracking:
   max_lost_frames: 60          # frames before lock is dropped
-  tracker_config: "bytetrack.yaml"   # trackers/bytetrack_drone.yaml: 1.5 s track memory at 30 fps
-  detector_conf: null          # detections handed to ByteTrack; null = model.conf_threshold (as before).
-                               # 0.1 lets ByteTrack keep a small target's track through weak frames;
-                               # new locks / re-ID still need model.conf_threshold. (HITL A/B: --det-conf 0.1)
+  tracker_config: "trackers/bytetrack_drone.yaml"   # 1.5 s track memory at 30 fps; "bytetrack.yaml" = Ultralytics default
+  detector_conf: 0.1           # detections handed to ByteTrack: weak ones keep an EXISTING track alive.
+                               # New locks / re-ID still need model.conf_threshold. null = old behaviour.
+                               # HITL 22 Nov (Pi + Hailo, jogger): id changes 14.5 -> 1.6-2.0 /min,
+                               # target visible 82 % -> 97 %, box at setpoint +-20 % 9 % -> 76-82 %.
   lost_decay_half_life_s: 0.15 # commands halve every 0.15 s while the locked target is unseen
   reid_warn_threshold: 0.60    # conf below this triggers [RE-ID?] warning
   coast_hold_s: 0.0            # keep the last command this long when the target is briefly unseen (0 = decay at once)
