@@ -146,11 +146,20 @@ def test_coco_filter_groups_translate():
 from model_select import tracking_params, confident   # noqa: E402
 
 
-def test_tracking_defaults_unchanged():
+def test_tracking_defaults():
+    """Shipped default since the 22 Nov HITL A/B: weak detections to ByteTrack, drone tracker file."""
     cfg = yaml.safe_load(open(ROOT / "config.yaml"))
     det, lock, trk = tracking_params(cfg)
-    assert det == lock == cfg["model"]["conf_threshold"]          # exactly the previous behaviour
-    assert trk == "bytetrack.yaml"                                 # Ultralytics built-in
+    assert det == 0.1 and lock == cfg["model"]["conf_threshold"] == 0.35
+    assert trk == str(ROOT / "trackers" / "bytetrack_drone.yaml")
+
+
+def test_old_behaviour_still_selectable():
+    cfg = yaml.safe_load(open(ROOT / "config.yaml"))
+    cfg["tracking"]["detector_conf"] = None
+    cfg["tracking"]["tracker_config"] = "bytetrack.yaml"
+    det, lock, trk = tracking_params(cfg)
+    assert det == lock == 0.35 and trk == "bytetrack.yaml"
 
 
 def test_tracking_overrides_and_repo_tracker_file():
