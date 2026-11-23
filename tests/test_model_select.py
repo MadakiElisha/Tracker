@@ -195,3 +195,10 @@ def test_drone_bytetrack_yaml_matches_ultralytics_schema():
 def test_confident_filter():
     tr = [[0, 0, 1, 1, 7, 0.12, 0], [0, 0, 1, 1, 8, 0.50, 0]]
     assert [t[4] for t in confident(tr, 0.35)] == [8]
+
+
+def test_visdrone_with_an_extra_class_is_still_identity():
+    """The Hailo VisDrone export logged a full mapping list instead of 'no mapping' (23 Nov HITL)."""
+    m = ClassMap({**VIS, 10: 'others'})
+    assert m.identity and m.describe() == "VisDrone classes (no mapping)"
+    assert m.model_classes([0, 1]) == [0, 1] and m.internal(4) == 4
