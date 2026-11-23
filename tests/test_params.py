@@ -104,3 +104,11 @@ def test_f405_differs_only_where_the_board_does():
     allowed = {'INS_HNTCH_OPTS'} | {k for k in set(a) | set(b) if re.match(r'(SERIAL|SR)\d', k)}
     diff = sorted(k for k in set(a) | set(b) if k not in allowed and a.get(k) != b.get(k))
     assert not diff, diff
+
+
+@pytest.mark.parametrize('board', sorted(FILES))
+def test_current_limit_protects_the_60a_esc(board):
+    """4-in-1 ESC rated 60 A per motor; motors can pull 67 A at full throttle (13x9x3, 6S)."""
+    P = ALL[board]
+    assert P['MOT_BAT_CURR_MAX'] / 4 <= 60 * 0.8          # average per motor leaves >= 20 % margin
+    assert P['MOT_BAT_CURR_MAX'] >= 4 * 16                # far above hover (~4 A per motor) and following

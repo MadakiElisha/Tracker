@@ -28,8 +28,10 @@ MOT_THST_HOVER,0.28     # ESTIMATE: 750 g per motor needed vs 2191 g at 50 % thr
 MOT_HOVER_LEARN,2       # learn and save the real hover throttle in flight
 MOT_BAT_VOLT_MAX,25.2   # 6S full (4.20 V/cell)
 MOT_BAT_VOLT_MIN,19.8   # 6S empty under load (3.30 V/cell); Li-ion pack: 18.0
-MOT_BAT_CURR_MAX,120    # A total. ESC rating unknown: 4 x 30 A is far above the MVP's needs
-                        # (~16 A hover) and below any normal 4-in-1. Raise after reading real current
+MOT_BAT_CURR_MAX,180    # A total. ESC: 60 A per motor; motors draw up to 67 A each at full throttle
+                        # (13x9x3, 6S). ArduPilot limits TOTAL current only: 180 A = 45 A average per
+                        # motor, 15 A margin for uneven load. Hover is ~16 A total. Lower it if the
+                        # battery's C rating x 9 Ah is below ~200 A.
 MOT_BAT_CURR_TC,5       # s, time constant of that limit
 
 # ---------------- notch filter on motor RPM (needs Bluejay + SERVO_BLH_BDMASK) ----------------
