@@ -102,7 +102,10 @@ class ClassMap:
             key = ALIASES.get(str(name).lower(), str(name).lower())
             if key in VISDRONE_IDS:
                 self.to_internal[int(mid)] = VISDRONE_IDS[key]
-        self.identity = all(self.to_internal.get(i) == i for i in range(10)) and len(names) == 10
+        # Identity when every class the tracker uses keeps its id (a VisDrone model). Extra classes
+        # the tracker ignores (e.g. an 'others' class) do not make it a mapping.
+        self.identity = all(self.to_internal.get(i) == i for i in range(10)) and \
+            all(mid == iid for mid, iid in self.to_internal.items())
         self.from_internal = {}
         for mid, iid in self.to_internal.items():
             self.from_internal.setdefault(iid, []).append(mid)
